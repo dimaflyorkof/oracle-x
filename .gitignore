@@ -1,0 +1,9 @@
+
+# ORACLE X runtime data
+venv/
+__pycache__/
+*.pyc
+*.log
+backups/
+*.db
+database/*.db
