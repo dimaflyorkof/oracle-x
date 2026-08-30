@@ -27,6 +27,7 @@ SESSION.headers.update({
 current_minute = None
 buy_volume = 0.0
 sell_volume = 0.0
+
 cvd = 0.0
 last_trade_id = None
 
@@ -36,11 +37,40 @@ def minute_bucket(ts_ms):
     return (ts_sec // 60) * 60
 
 
-def fetch_trades():
+def load_cvd():
+    global cvd
+
+    con = sqlite3.connect(DB_PATH)
+
+    row = con.execute(
+        """
+        SELECT cvd
+        FROM orderflow_history
+        WHERE symbol = ?
+          AND source = ?
+        ORDER BY timestamp_unix DESC
+        LIMIT 1
+        """,
+        (
+            SYMBOL,
+            SOURCE,
+        ),
+    ).fetchone()
+
+    con.close()
+
+    if row and row[0] is not None:
+        cvd = float(row[0])
+
+
+def fetch_trades(from_id=None):
     params = {
         "symbol": BINANCE_SYMBOL,
         "limit": LIMIT,
     }
+
+    if from_id is not None:
+        params["fromId"] = from_id
 
     response = SESSION.get(
         BASE_URL + "/fapi/v1/aggTrades",
@@ -53,14 +83,37 @@ def fetch_trades():
     return response.json()
 
 
+def initialize_trade_cursor():
+    global last_trade_id
+
+    trades = fetch_trades()
+
+    if not trades:
+        return False
+
+    last_trade_id = int(
+        trades[-1]["a"]
+    )
+
+    print(
+        "Initialized trade cursor:",
+        last_trade_id,
+        flush=True,
+    )
+
+    return True
+
+
 def save_minute(
     timestamp_unix,
     buy_vol,
     sell_vol,
+    final_trade_id,
 ):
     global cvd
 
     delta = buy_vol - sell_vol
+
     cvd += delta
 
     total = buy_vol + sell_vol
@@ -82,23 +135,37 @@ def save_minute(
         "delta": delta,
         "cvd": cvd,
         "imbalance": imbalance,
+        "last_trade_id": final_trade_id,
     }
 
     con = sqlite3.connect(DB_PATH)
 
-    con.execute(
+    existing = con.execute(
         """
-        DELETE FROM orderflow_history
+        SELECT 1
+        FROM orderflow_history
         WHERE symbol = ?
           AND source = ?
           AND timestamp_unix = ?
+        LIMIT 1
         """,
         (
             SYMBOL,
             SOURCE,
             timestamp_unix,
         ),
-    )
+    ).fetchone()
+
+    if existing:
+        con.close()
+
+        print(
+            "SKIP existing minute:",
+            timestamp,
+            flush=True,
+        )
+
+        return
 
     con.execute(
         """
@@ -141,7 +208,8 @@ def save_minute(
         f"BUY={buy_vol:.4f} BTC | "
         f"SELL={sell_vol:.4f} BTC | "
         f"DELTA={delta:.4f} | "
-        f"CVD={cvd:.4f}",
+        f"CVD={cvd:.4f} | "
+        f"trade_id={final_trade_id}",
         flush=True,
     )
 
@@ -152,7 +220,9 @@ def process_trade(trade):
     global sell_volume
     global last_trade_id
 
-    trade_id = int(trade["a"])
+    trade_id = int(
+        trade["a"]
+    )
 
     if (
         last_trade_id is not None
@@ -160,8 +230,13 @@ def process_trade(trade):
     ):
         return
 
-    ts_ms = int(trade["T"])
-    minute = minute_bucket(ts_ms)
+    ts_ms = int(
+        trade["T"]
+    )
+
+    minute = minute_bucket(
+        ts_ms
+    )
 
     if current_minute is None:
         current_minute = minute
@@ -171,13 +246,16 @@ def process_trade(trade):
             current_minute,
             buy_volume,
             sell_volume,
+            last_trade_id,
         )
 
         current_minute = minute
         buy_volume = 0.0
         sell_volume = 0.0
 
-    qty = float(trade["q"])
+    qty = float(
+        trade["q"]
+    )
 
     buyer_is_maker = bool(
         trade["m"]
@@ -191,28 +269,83 @@ def process_trade(trade):
     last_trade_id = trade_id
 
 
+def process_new_trades():
+    global last_trade_id
+
+    if last_trade_id is None:
+        return
+
+    while True:
+        trades = fetch_trades(
+            from_id=last_trade_id + 1
+        )
+
+        if not trades:
+            break
+
+        for trade in trades:
+            process_trade(trade)
+
+        if len(trades) < LIMIT:
+            break
+
+
 def run():
     print()
-    print("ORACLE X - BINANCE ORDER FLOW")
-    print("Symbol:", SYMBOL)
-    print("Source:", SOURCE)
-    print("Mode: REST aggTrades")
-    print("Aggregation: 1 minute")
-    print("Status: LIVE")
+    print(
+        "ORACLE X - BINANCE ORDER FLOW",
+        flush=True,
+    )
+    print(
+        "Symbol:",
+        SYMBOL,
+        flush=True,
+    )
+    print(
+        "Source:",
+        SOURCE,
+        flush=True,
+    )
+    print(
+        "Mode: REST aggTrades GAP-SAFE",
+        flush=True,
+    )
+    print(
+        "Aggregation: 1 minute",
+        flush=True,
+    )
+    print(
+        "Status: LIVE",
+        flush=True,
+    )
     print()
+
+    load_cvd()
+
+    print(
+        "Restored CVD:",
+        round(cvd, 4),
+        flush=True,
+    )
+
+    if not initialize_trade_cursor():
+        print(
+            "Unable to initialize trade cursor",
+            flush=True,
+        )
+
+        return
 
     while True:
         try:
-            trades = fetch_trades()
-
-            for trade in trades:
-                process_trade(trade)
+            process_new_trades()
 
         except KeyboardInterrupt:
             print(
                 "\nCollector stopped",
                 flush=True,
             )
+
             break
 
         except Exception as exc:
@@ -222,7 +355,9 @@ def run():
                 flush=True,
             )
 
-        time.sleep(POLL_SECONDS)
+        time.sleep(
+            POLL_SECONDS
+        )
 
 
 if __name__ == "__main__":
