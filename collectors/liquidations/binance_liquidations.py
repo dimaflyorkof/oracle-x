@@ -12,7 +12,7 @@ SYMBOL = "BTC"
 SOURCE = "binance_futures"
 
 WS_URL = (
-    "wss://fstream.binance.com/ws/"
+    "wss://fstream.binance.com/market/ws/"
     "btcusdt@forceOrder"
 )
 
