@@ -3,37 +3,28 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 
-import requests
+import websocket
 
 from config.settings import DB_PATH
 
 
 SYMBOL = "BTC"
-BINANCE_SYMBOL = "BTCUSDT"
 SOURCE = "binance_futures"
 
-BASE_URL = "https://fapi.binance.com"
-
-POLL_SECONDS = 5
-LIMIT = 1000
-
-SESSION = requests.Session()
-SESSION.headers.update({
-    "User-Agent": "ORACLE-X/1.0",
-    "Accept": "application/json",
-})
+WS_URL = (
+    "wss://fstream.binance.com/market/ws/"
+    "btcusdt@aggTrade"
+)
 
 
 current_minute = None
 buy_volume = 0.0
 sell_volume = 0.0
-
 cvd = 0.0
-last_trade_id = None
 
 
-def minute_bucket(ts_ms):
-    ts_sec = ts_ms // 1000
+def minute_bucket(event_ms):
+    ts_sec = event_ms // 1000
     return (ts_sec // 60) * 60
 
 
@@ -48,7 +39,7 @@ def load_cvd():
         FROM orderflow_history
         WHERE symbol = ?
           AND source = ?
-        ORDER BY timestamp_unix DESC
+        ORDER BY timestamp_unix DESC, id DESC
         LIMIT 1
         """,
         (
@@ -63,60 +54,12 @@ def load_cvd():
         cvd = float(row[0])
 
 
-def fetch_trades(from_id=None):
-    params = {
-        "symbol": BINANCE_SYMBOL,
-        "limit": LIMIT,
-    }
-
-    if from_id is not None:
-        params["fromId"] = from_id
-
-    response = SESSION.get(
-        BASE_URL + "/fapi/v1/aggTrades",
-        params=params,
-        timeout=15,
-    )
-
-    response.raise_for_status()
-
-    return response.json()
-
-
-def initialize_trade_cursor():
-    global last_trade_id
-
-    trades = fetch_trades()
-
-    if not trades:
-        return False
-
-    last_trade_id = int(
-        trades[-1]["a"]
-    )
-
-    print(
-        "Initialized trade cursor:",
-        last_trade_id,
-        flush=True,
-    )
-
-    return True
-
-
-def save_minute(
-    timestamp_unix,
-    buy_vol,
-    sell_vol,
-    final_trade_id,
-):
+def save_minute(timestamp_unix, buy_vol, sell_vol):
     global cvd
 
-    delta = buy_vol - sell_vol
-
-    cvd += delta
-
     total = buy_vol + sell_vol
+
+    delta = buy_vol - sell_vol
 
     imbalance = (
         delta / total
@@ -124,18 +67,19 @@ def save_minute(
         else 0.0
     )
 
+    cvd += delta
+
     timestamp = datetime.fromtimestamp(
         timestamp_unix,
         tz=timezone.utc,
     ).isoformat()
 
     raw = {
-        "buy_volume": buy_vol,
-        "sell_volume": sell_vol,
-        "delta": delta,
-        "cvd": cvd,
+        "buy_volume_usd": buy_vol,
+        "sell_volume_usd": sell_vol,
+        "delta_usd": delta,
+        "cvd_usd": cvd,
         "imbalance": imbalance,
-        "last_trade_id": final_trade_id,
     }
 
     con = sqlite3.connect(DB_PATH)
@@ -144,27 +88,20 @@ def save_minute(
         """
         SELECT 1
         FROM orderflow_history
-        WHERE symbol = ?
+        WHERE timestamp_unix = ?
+          AND symbol = ?
           AND source = ?
-          AND timestamp_unix = ?
         LIMIT 1
         """,
         (
+            timestamp_unix,
             SYMBOL,
             SOURCE,
-            timestamp_unix,
         ),
     ).fetchone()
 
     if existing:
         con.close()
-
-        print(
-            "SKIP existing minute:",
-            timestamp,
-            flush=True,
-        )
-
         return
 
     con.execute(
@@ -205,38 +142,33 @@ def save_minute(
 
     print(
         f"{timestamp} | "
-        f"BUY={buy_vol:.4f} BTC | "
-        f"SELL={sell_vol:.4f} BTC | "
-        f"DELTA={delta:.4f} | "
-        f"CVD={cvd:.4f} | "
-        f"trade_id={final_trade_id}",
+        f"BUY={buy_vol:,.4f} BTC | "
+        f"SELL={sell_vol:,.4f} BTC | "
+        f"DELTA={delta:,.4f} BTC | "
+        f"CVD={cvd:,.4f} BTC | "
+        f"IMB={imbalance:.4f}",
         flush=True,
     )
 
 
-def process_trade(trade):
+def process_trade(data):
     global current_minute
     global buy_volume
     global sell_volume
-    global last_trade_id
 
-    trade_id = int(
-        trade["a"]
-    )
+    price = float(data.get("p", 0) or 0)
+    qty = float(data.get("q", 0) or 0)
 
-    if (
-        last_trade_id is not None
-        and trade_id <= last_trade_id
-    ):
+    if price <= 0 or qty <= 0:
         return
 
-    ts_ms = int(
-        trade["T"]
+    event_ms = int(
+        data.get("T")
+        or data.get("E")
+        or time.time() * 1000
     )
 
-    minute = minute_bucket(
-        ts_ms
-    )
+    minute = minute_bucket(event_ms)
 
     if current_minute is None:
         current_minute = minute
@@ -246,54 +178,68 @@ def process_trade(trade):
             current_minute,
             buy_volume,
             sell_volume,
-            last_trade_id,
         )
 
         current_minute = minute
         buy_volume = 0.0
         sell_volume = 0.0
 
-    qty = float(
-        trade["q"]
-    )
+    notional = qty
 
-    buyer_is_maker = bool(
-        trade["m"]
-    )
+    buyer_is_maker = bool(data.get("m"))
 
-    if not buyer_is_maker:
-        buy_volume += qty
+    if buyer_is_maker:
+        sell_volume += notional
     else:
-        sell_volume += qty
-
-    last_trade_id = trade_id
+        buy_volume += notional
 
 
-def process_new_trades():
-    global last_trade_id
+def on_message(ws, message):
+    try:
+        data = json.loads(message)
 
-    if last_trade_id is None:
-        return
+        if data.get("e") != "aggTrade":
+            return
 
-    while True:
-        trades = fetch_trades(
-            from_id=last_trade_id + 1
+        process_trade(data)
+
+    except Exception as exc:
+        print(
+            "MESSAGE ERROR:",
+            exc,
+            flush=True,
         )
 
-        if not trades:
-            break
 
-        for trade in trades:
-            process_trade(trade)
+def on_error(ws, error):
+    print(
+        "WS ERROR:",
+        error,
+        flush=True,
+    )
 
-        if len(trades) < LIMIT:
-            break
+
+def on_close(
+    ws,
+    close_status_code,
+    close_msg,
+):
+    print(
+        "WS CLOSED:",
+        close_status_code,
+        close_msg,
+        flush=True,
+    )
 
 
-def run():
+def on_open(ws):
     print()
     print(
-        "ORACLE X - BINANCE ORDER FLOW",
+        "ORACLE X - BINANCE ORDERFLOW",
+        flush=True,
+    )
+    print(
+        "Mode: WebSocket aggTrade + 1m aggregation",
         flush=True,
     )
     print(
@@ -307,45 +253,41 @@ def run():
         flush=True,
     )
     print(
-        "Mode: REST aggTrades GAP-SAFE",
-        flush=True,
-    )
-    print(
-        "Aggregation: 1 minute",
-        flush=True,
-    )
-    print(
         "Status: LIVE",
         flush=True,
     )
     print()
 
+
+def run():
     load_cvd()
 
     print(
         "Restored CVD:",
-        round(cvd, 4),
+        round(cvd, 2),
         flush=True,
     )
 
-    if not initialize_trade_cursor():
-        print(
-            "Unable to initialize trade cursor",
-            flush=True,
-        )
-
-        return
-
     while True:
         try:
-            process_new_trades()
+            ws = websocket.WebSocketApp(
+                WS_URL,
+                on_open=on_open,
+                on_message=on_message,
+                on_error=on_error,
+                on_close=on_close,
+            )
+
+            ws.run_forever(
+                ping_interval=20,
+                ping_timeout=10,
+            )
 
         except KeyboardInterrupt:
             print(
-                "\nCollector stopped",
+                "Collector stopped",
                 flush=True,
             )
-
             break
 
         except Exception as exc:
@@ -355,9 +297,12 @@ def run():
                 flush=True,
             )
 
-        time.sleep(
-            POLL_SECONDS
+        print(
+            "Reconnect in 5 seconds...",
+            flush=True,
         )
+
+        time.sleep(5)
 
 
 if __name__ == "__main__":
