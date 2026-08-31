@@ -9,16 +9,20 @@ from config.settings import DB_PATH
 
 
 SYMBOL = "BTC"
+BINANCE_SYMBOL = "BTCUSDT"
 SOURCE = "binance_futures"
 
 WS_URL = (
     "wss://fstream.binance.com/market/ws/"
-    "btcusdt@forceOrder"
+    "!forceOrder@arr"
 )
 
 
 def save_liquidation(data):
     order = data.get("o", {})
+
+    if order.get("s") != BINANCE_SYMBOL:
+        return
 
     side = order.get("S")
 
@@ -51,12 +55,10 @@ def save_liquidation(data):
     long_liquidations = 0.0
     short_liquidations = 0.0
 
-    # SELL force order = long position liquidated
     if side == "SELL":
         long_liquidations = notional
         dominant_side = "LONG"
 
-    # BUY force order = short position liquidated
     elif side == "BUY":
         short_liquidations = notional
         dominant_side = "SHORT"
@@ -68,7 +70,7 @@ def save_liquidation(data):
 
     con.execute(
         """
-        INSERT INTO liquidation_history (
+        INSERT OR IGNORE INTO liquidation_history (
             timestamp,
             timestamp_unix,
             symbol,
@@ -103,7 +105,8 @@ def save_liquidation(data):
     print(
         f"{timestamp} | "
         f"{dominant_side} liquidation | "
-        f"${notional:,.2f}"
+        f"${notional:,.2f}",
+        flush=True,
     )
 
 
@@ -117,11 +120,19 @@ def on_message(ws, message):
         save_liquidation(data)
 
     except Exception as exc:
-        print("MESSAGE ERROR:", exc)
+        print(
+            "MESSAGE ERROR:",
+            exc,
+            flush=True,
+        )
 
 
 def on_error(ws, error):
-    print("WS ERROR:", error)
+    print(
+        "WS ERROR:",
+        error,
+        flush=True,
+    )
 
 
 def on_close(
@@ -133,17 +144,39 @@ def on_close(
         "WS CLOSED:",
         close_status_code,
         close_msg,
+        flush=True,
     )
 
 
 def on_open(ws):
     print()
-    print("ORACLE X - BINANCE LIQUIDATIONS")
-    print("Symbol:", SYMBOL)
-    print("Source:", SOURCE)
-    print("Status: LIVE")
+    print(
+        "ORACLE X - BINANCE LIQUIDATIONS",
+        flush=True,
+    )
+    print(
+        "Stream: ALL-MARKET FORCE ORDERS",
+        flush=True,
+    )
+    print(
+        "Filter:",
+        BINANCE_SYMBOL,
+        flush=True,
+    )
+    print(
+        "Source:",
+        SOURCE,
+        flush=True,
+    )
+    print(
+        "Status: LIVE",
+        flush=True,
+    )
     print()
-    print("Waiting for liquidations...")
+    print(
+        "Waiting for BTC liquidations...",
+        flush=True,
+    )
     print()
 
 
@@ -165,13 +198,23 @@ def run():
 
         except KeyboardInterrupt:
             print()
-            print("Collector stopped")
+            print(
+                "Collector stopped",
+                flush=True,
+            )
             break
 
         except Exception as exc:
-            print("COLLECTOR ERROR:", exc)
+            print(
+                "COLLECTOR ERROR:",
+                exc,
+                flush=True,
+            )
 
-        print("Reconnect in 5 seconds...")
+        print(
+            "Reconnect in 5 seconds...",
+            flush=True,
+        )
         time.sleep(5)
 
 
