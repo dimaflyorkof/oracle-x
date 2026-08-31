@@ -75,10 +75,10 @@ def save_minute(timestamp_unix, buy_vol, sell_vol):
     ).isoformat()
 
     raw = {
-        "buy_volume_usd": buy_vol,
-        "sell_volume_usd": sell_vol,
-        "delta_usd": delta,
-        "cvd_usd": cvd,
+        "buy_volume_btc": buy_vol,
+        "sell_volume_btc": sell_vol,
+        "delta_btc": delta,
+        "cvd_btc": cvd,
         "imbalance": imbalance,
     }
 
