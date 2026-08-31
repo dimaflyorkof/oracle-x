@@ -170,6 +170,17 @@ def init_database():
         )
     """)
 
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_liquidation_unique
+        ON liquidation_history (
+            timestamp_unix,
+            symbol,
+            source,
+            dominant_side,
+            total_liquidations
+        )
+    """)
+
     # =====================================================
     # ON-CHAIN / WHALE HISTORY
     # =====================================================
