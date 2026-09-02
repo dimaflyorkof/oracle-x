@@ -284,10 +284,11 @@ if __name__ == "__main__":
 def learn_from_closed_signals(
     symbol: str = "BTC",
     model_version: str = "1.0",
-    learning_rate: float = 0.05,
+    learning_rate: float = 0.03,
+    min_samples: int = 20,
 ) -> Dict[str, float]:
-    if learning_rate <= 0 or learning_rate > 0.25:
-        raise ValueError("learning_rate має бути > 0 і <= 0.25")
+    if learning_rate <= 0 or learning_rate > 0.10:
+        raise ValueError("learning_rate має бути > 0 і <= 0.10")
 
     current = get_weights(
         symbol=symbol,
@@ -296,6 +297,15 @@ def learn_from_closed_signals(
         model_version=model_version,
     )
 
+    feature_columns = {
+        "regime": "regime_component",
+        "structure": "structure_component",
+        "momentum": "momentum_component",
+        "orderflow": "orderflow_component",
+        "derivatives": "derivatives_component",
+        "liquidations": "liquidations_component",
+    }
+
     con = connect()
 
     try:
@@ -303,13 +313,16 @@ def learn_from_closed_signals(
             """
             SELECT
                 decision,
-                result,
                 result_r,
-                market_regime
+                regime_component,
+                structure_component,
+                momentum_component,
+                orderflow_component,
+                derivatives_component,
+                liquidations_component
             FROM signals
             WHERE symbol = ?
               AND status = 'CLOSED'
-              AND result IS NOT NULL
               AND result_r IS NOT NULL
             ORDER BY id
             """,
@@ -322,41 +335,104 @@ def learn_from_closed_signals(
     if not rows:
         return current
 
-    wins = 0
-    losses = 0
-    total_r = 0.0
+    feature_stats = {}
+
+    for feature_name in feature_columns:
+        feature_stats[feature_name] = {
+            "samples": 0,
+            "wins": 0,
+            "losses": 0,
+            "total_r": 0.0,
+            "correct_direction": 0,
+        }
 
     for row in rows:
+        direction = row["decision"]
+
+        if direction not in ("LONG", "SHORT"):
+            continue
+
         result_r = float(row["result_r"] or 0.0)
-        total_r += result_r
 
-        if result_r > 0:
-            wins += 1
-        elif result_r < 0:
-            losses += 1
+        for feature_name, column in feature_columns.items():
+            raw_value = row[column]
 
-    sample_size = wins + losses
+            if raw_value is None:
+                continue
 
-    if sample_size == 0:
-        return current
+            value = float(raw_value)
 
-    win_rate = wins / sample_size
-    average_r = total_r / sample_size
+            # Нульовий фактор не давав directional інформації.
+            if abs(value) < 1e-9:
+                continue
 
-    # Поки що використовуємо дуже консервативне навчання.
-    # Якщо статистика позитивна — трохи підсилюємо structure/regime.
-    # Якщо негативна — трохи збільшуємо вагу momentum як фільтра.
+            stats = feature_stats[feature_name]
+            stats["samples"] += 1
+            stats["total_r"] += result_r
+
+            if result_r > 0:
+                stats["wins"] += 1
+            elif result_r < 0:
+                stats["losses"] += 1
+
+            factor_direction = (
+                "LONG"
+                if value > 0
+                else "SHORT"
+            )
+
+            if factor_direction == direction:
+                # Якщо фактор підтримував напрям угоди:
+                # прибуткова угода = правильний фактор,
+                # збиткова = неправильний фактор.
+                if result_r > 0:
+                    stats["correct_direction"] += 1
+
+            else:
+                # Якщо фактор був проти угоди,
+                # а угода програла — фактор фактично попереджав правильно.
+                if result_r < 0:
+                    stats["correct_direction"] += 1
+
     proposed = current.copy()
 
-    if average_r > 0 and win_rate >= 0.55:
-        proposed["regime"] = current.get("regime", 0.40) + learning_rate * 0.5
-        proposed["structure"] = current.get("structure", 0.35) + learning_rate * 0.5
-        proposed["momentum"] = current.get("momentum", 0.25) - learning_rate
+    for feature_name, stats in feature_stats.items():
+        samples = stats["samples"]
 
-    elif average_r < 0 or win_rate < 0.45:
-        proposed["regime"] = current.get("regime", 0.40) - learning_rate * 0.5
-        proposed["structure"] = current.get("structure", 0.35) - learning_rate * 0.5
-        proposed["momentum"] = current.get("momentum", 0.25) + learning_rate
+        if samples < min_samples:
+            continue
+
+        accuracy = stats["correct_direction"] / samples
+        average_r = stats["total_r"] / samples
+
+        old_weight = current.get(
+            feature_name,
+            DEFAULT_WEIGHTS.get(feature_name, 0.0),
+        )
+
+        # 50% = випадкова directional точність.
+        edge = accuracy - 0.50
+
+        adjustment = edge * learning_rate * 2.0
+
+        # Average R використовується як другий слабкий модифікатор.
+        if average_r > 0:
+            adjustment += min(average_r, 2.0) * learning_rate * 0.10
+        elif average_r < 0:
+            adjustment += max(average_r, -2.0) * learning_rate * 0.10
+
+        # Обмежуємо зміну за один цикл.
+        max_step = learning_rate
+        adjustment = max(
+            -max_step,
+            min(max_step, adjustment),
+        )
+
+        # Не дозволяємо фактору зникнути або захопити всю модель.
+        proposed[feature_name] = max(
+            0.03,
+            min(0.45, old_weight + adjustment),
+        )
 
     normalized = normalize_weights(proposed)
 
@@ -365,6 +441,24 @@ def learn_from_closed_signals(
 
     try:
         for feature_name, weight in normalized.items():
+            stats = feature_stats.get(feature_name, {})
+
+            samples = int(stats.get("samples", 0))
+            wins = int(stats.get("wins", 0))
+            losses = int(stats.get("losses", 0))
+
+            win_rate = (
+                wins / samples
+                if samples > 0
+                else None
+            )
+
+            average_r = (
+                stats.get("total_r", 0.0) / samples
+                if samples > 0
+                else None
+            )
+
             con.execute(
                 """
                 UPDATE feature_weights
@@ -384,7 +478,7 @@ def learn_from_closed_signals(
                 """,
                 (
                     float(weight),
-                    sample_size,
+                    samples,
                     wins,
                     losses,
                     win_rate,
@@ -403,3 +497,4 @@ def learn_from_closed_signals(
         con.close()
 
     return normalized
+
