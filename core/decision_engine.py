@@ -8,6 +8,7 @@ from core.structure import analyze_structure
 from core.momentum import analyze_momentum
 from core.scoring import analyze_score
 from core.risk import analyze_risk
+from learning.historical_twins import analyze_historical_twins
 
 
 @dataclass
@@ -36,6 +37,11 @@ def build_reasons(
 ) -> tuple[List[str], List[str], List[str], Dict]:
     regime = analyze_regime(symbol)
     scoring = analyze_score(symbol)
+    twins = analyze_historical_twins(
+        symbol=symbol,
+        timeframe="15m",
+        top_n=10,
+    )
 
     reasons_for: List[str] = []
     reasons_against: List[str] = []
@@ -130,11 +136,35 @@ def build_reasons(
             f"low timeframe agreement: {regime.agreement:.1f}%"
         )
 
+    if twins.historical_edge >= 15:
+        if (
+            twins.up_probability_4h is not None
+            and twins.up_probability_4h >= 60
+        ):
+            reasons_for.append(
+                f"historical twins: {twins.up_probability_4h:.1f}% "
+                f"of similar cases rose over 4h"
+            )
+
+        elif (
+            twins.up_probability_4h is not None
+            and twins.up_probability_4h <= 40
+        ):
+            reasons_against.append(
+                f"historical twins: only {twins.up_probability_4h:.1f}% "
+                f"of similar cases rose over 4h"
+            )
+    else:
+        warnings.append(
+            f"historical edge is weak: {twins.historical_edge:.1f}%"
+        )
+
     data = {
         "regime": regime.to_dict(),
         "scoring": scoring.to_dict(),
         "structure": structure_data,
         "momentum": momentum_data,
+        "historical_twins": twins.to_dict(),
     }
 
     return reasons_for, reasons_against, warnings, data
