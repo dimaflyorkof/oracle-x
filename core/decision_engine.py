@@ -9,6 +9,7 @@ from core.momentum import analyze_momentum
 from core.scoring import analyze_score
 from core.risk import analyze_risk
 from learning.historical_twins import analyze_historical_twins
+from core.contradictions import analyze_contradictions
 
 
 @dataclass
@@ -175,12 +176,14 @@ def analyze_decision(
 ) -> DecisionResult:
     scoring = analyze_score(symbol)
     risk = analyze_risk(symbol)
+    contradictions = analyze_contradictions(symbol)
 
     reasons_for, reasons_against, warnings, data = build_reasons(
         symbol
     )
 
     data["risk"] = risk.to_dict()
+    data["contradictions"] = contradictions.to_dict()
 
     if risk.decision != "ALLOW":
         decision = "NO_TRADE"
@@ -195,6 +198,34 @@ def analyze_decision(
         decision = "NO_TRADE"
 
     confidence = scoring.confidence
+
+    if contradictions.severity == "MEDIUM":
+        confidence *= 0.85
+        warnings.append(
+            f"contradiction severity MEDIUM: score={contradictions.score}"
+        )
+
+    elif contradictions.severity == "HIGH":
+        confidence *= 0.60
+        warnings.append(
+            f"contradiction severity HIGH: score={contradictions.score}"
+        )
+
+        if decision in ("LONG", "SHORT"):
+            decision = "NO_TRADE"
+            warnings.append(
+                "trade blocked by high contradiction risk"
+            )
+
+    elif contradictions.severity == "LOW":
+        warnings.append(
+            f"contradiction severity LOW: score={contradictions.score}"
+        )
+
+    for item in contradictions.contradictions:
+        warnings.append(
+            f"conflict: {item}"
+        )
 
     if decision == "NO_TRADE":
         warnings.append(
