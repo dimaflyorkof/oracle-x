@@ -39,6 +39,10 @@ class BacktestTrade:
     result_r: float
     exit_timestamp: Optional[str]
     exit_index: int
+    exit_reason: str
+    mfe_r: float
+    mae_r: float
+    cost_r: float
 
 
 @dataclass
@@ -52,6 +56,35 @@ class BacktestResult:
     average_r: float
     profit_factor: float
     max_drawdown_r: float
+    tp_count: int
+    stop_count: int
+    time_exit_count: int
+    tp_total_r: float
+    stop_total_r: float
+    time_exit_total_r: float
+    long_count: int
+    long_wins: int
+    long_total_r: float
+    short_count: int
+    short_wins: int
+    short_total_r: float
+    monthly_stats: dict
+    avg_mfe_r: float
+    avg_mae_r: float
+    winners_avg_mfe_r: float
+    winners_avg_mae_r: float
+    losers_avg_mfe_r: float
+    losers_avg_mae_r: float
+    stop_avg_mfe_r: float
+    time_exit_avg_mfe_r: float
+    time_exit_avg_mae_r: float
+    avg_cost_r: float
+    total_cost_r: float
+    long_avg_cost_r: float
+    short_avg_cost_r: float
+    tp_avg_cost_r: float
+    stop_avg_cost_r: float
+    time_exit_avg_cost_r: float
 
 
 def load_rows(symbol: str, timeframe: str) -> List:
@@ -272,29 +305,52 @@ def simulate_trade(
     start_index: int,
     direction: str,
     atr_value: float,
+    stop_atr: float = 1.5,
+    tp_r: float = 2.0,
+    fee_bps: float = 0.0,
+    slippage_bps: float = 0.0,
     max_bars: int = 32,
 ) -> Optional[BacktestTrade]:
-    entry_row = rows_15m[start_index]
-    entry = float(entry_row["close"])
+    signal_row = rows_15m[start_index]
 
-    distance = atr_value * 1.5
+    entry_index = start_index + 1
+
+    if entry_index >= len(rows_15m):
+        return None
+
+    entry_row = rows_15m[entry_index]
+    entry = float(entry_row["open"])
+
+    distance = atr_value * stop_atr
 
     if distance <= 0:
         return None
 
     if direction == "LONG":
         stop = entry - distance
-        tp = entry + distance * 2.0
+        tp = entry + distance * tp_r
     else:
         stop = entry + distance
-        tp = entry - distance * 2.0
+        tp = entry - distance * tp_r
+
+    risk = abs(entry - stop)
+
+    if risk <= 0:
+        return None
+
+    round_trip_bps = 2.0 * (fee_bps + slippage_bps)
+    cost_price = entry * (round_trip_bps / 10000.0)
+    cost_r = cost_price / risk
+
+    mfe_r = 0.0
+    mae_r = 0.0
 
     end = min(
         len(rows_15m),
-        start_index + 1 + max_bars,
+        entry_index + max_bars,
     )
 
-    for i in range(start_index + 1, end):
+    for i in range(entry_index, end):
         row = rows_15m[i]
 
         high = float(row["high"])
@@ -316,9 +372,13 @@ def simulate_trade(
                 entry=entry,
                 stop=stop,
                 tp=tp,
-                result_r=-1.0,
+                result_r=-1.0 - cost_r,
                 exit_timestamp=row["timestamp"],
                 exit_index=i,
+                exit_reason="STOP",
+                mfe_r=mfe_r,
+                mae_r=max(mae_r, 1.0),
+                cost_r=cost_r,
             )
 
         if tp_hit:
@@ -329,10 +389,24 @@ def simulate_trade(
                 entry=entry,
                 stop=stop,
                 tp=tp,
-                result_r=2.0,
+                result_r=tp_r - cost_r,
                 exit_timestamp=row["timestamp"],
                 exit_index=i,
+                exit_reason="TP",
+                mfe_r=max(mfe_r, tp_r),
+                mae_r=mae_r,
+                cost_r=cost_r,
             )
+
+        if direction == "LONG":
+            favorable_r = (high - entry) / risk
+            adverse_r = (entry - low) / risk
+        else:
+            favorable_r = (entry - low) / risk
+            adverse_r = (high - entry) / risk
+
+        mfe_r = max(mfe_r, favorable_r, 0.0)
+        mae_r = max(mae_r, adverse_r, 0.0)
 
     if end <= start_index + 1:
         return None
@@ -341,15 +415,12 @@ def simulate_trade(
     exit_row = rows_15m[exit_index]
     exit_price = float(exit_row["close"])
 
-    risk = abs(entry - stop)
-
-    if risk <= 0:
-        return None
-
     if direction == "LONG":
         result_r = (exit_price - entry) / risk
     else:
         result_r = (entry - exit_price) / risk
+
+    result_r -= cost_r
 
     return BacktestTrade(
         timestamp=entry_row["timestamp"],
@@ -361,6 +432,10 @@ def simulate_trade(
         result_r=result_r,
         exit_timestamp=exit_row["timestamp"],
         exit_index=exit_index,
+        exit_reason="TIME_EXIT",
+        mfe_r=mfe_r,
+        mae_r=mae_r,
+        cost_r=cost_r,
     )
 
 
@@ -368,6 +443,12 @@ def run_backtest(
     symbol: str = "BTC",
     min_score: float = 25.0,
     min_agreement: float = 60.0,
+    stop_atr: float = 1.5,
+    tp_r: float = 2.0,
+    fee_bps: float = 0.0,
+    slippage_bps: float = 0.0,
+    start_ts: int | None = None,
+    end_ts: int | None = None,
 ) -> BacktestResult:
     data = {
         tf: load_rows(symbol, tf)
@@ -391,6 +472,13 @@ def run_backtest(
     while i < len(rows_15m) - 32:
         row = rows_15m[i]
         ts = int(row["timestamp_unix"])
+
+        if start_ts is not None and ts < start_ts:
+            i += 1
+            continue
+
+        if end_ts is not None and ts > end_ts:
+            break
 
         score, agreement = historical_score(
             data,
@@ -427,6 +515,10 @@ def run_backtest(
             i,
             direction,
             tf_result.atr14,
+            stop_atr=stop_atr,
+            tp_r=tp_r,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
         )
 
         if trade is not None:
@@ -468,6 +560,37 @@ def run_backtest(
 
     count = len(trades)
 
+    tp_trades = [t for t in trades if t.exit_reason == "TP"]
+    stop_trades = [t for t in trades if t.exit_reason == "STOP"]
+    time_exit_trades = [t for t in trades if t.exit_reason == "TIME_EXIT"]
+
+    long_trades = [t for t in trades if t.direction == "LONG"]
+    short_trades = [t for t in trades if t.direction == "SHORT"]
+
+    monthly = {}
+
+    for trade in trades:
+        month = trade.timestamp[:7]
+
+        if month not in monthly:
+            monthly[month] = {
+                "trades": 0,
+                "wins": 0,
+                "total_r": 0.0,
+            }
+
+        monthly[month]["trades"] += 1
+        monthly[month]["total_r"] += trade.result_r
+
+        if trade.result_r > 0:
+            monthly[month]["wins"] += 1
+
+    winning_trades = [t for t in trades if t.result_r > 0]
+    losing_trades = [t for t in trades if t.result_r < 0]
+
+    def avg(values):
+        return sum(values) / len(values) if values else 0.0
+
     return BacktestResult(
         symbol=symbol,
         trades=count,
@@ -484,6 +607,75 @@ def run_backtest(
         ),
         profit_factor=round(profit_factor, 4),
         max_drawdown_r=round(max_drawdown, 2),
+
+        tp_count=len(tp_trades),
+        stop_count=len(stop_trades),
+        time_exit_count=len(time_exit_trades),
+
+        tp_total_r=round(sum(t.result_r for t in tp_trades), 2),
+        stop_total_r=round(sum(t.result_r for t in stop_trades), 2),
+        time_exit_total_r=round(sum(t.result_r for t in time_exit_trades), 2),
+
+        long_count=len(long_trades),
+        long_wins=sum(1 for t in long_trades if t.result_r > 0),
+        long_total_r=round(sum(t.result_r for t in long_trades), 2),
+
+        short_count=len(short_trades),
+        short_wins=sum(1 for t in short_trades if t.result_r > 0),
+        short_total_r=round(sum(t.result_r for t in short_trades), 2),
+        monthly_stats=monthly,
+
+        avg_mfe_r=round(avg([t.mfe_r for t in trades]), 4),
+        avg_mae_r=round(avg([t.mae_r for t in trades]), 4),
+
+        winners_avg_mfe_r=round(
+            avg([t.mfe_r for t in winning_trades]), 4
+        ),
+        winners_avg_mae_r=round(
+            avg([t.mae_r for t in winning_trades]), 4
+        ),
+
+        losers_avg_mfe_r=round(
+            avg([t.mfe_r for t in losing_trades]), 4
+        ),
+        losers_avg_mae_r=round(
+            avg([t.mae_r for t in losing_trades]), 4
+        ),
+
+        stop_avg_mfe_r=round(
+            avg([t.mfe_r for t in stop_trades]), 4
+        ),
+
+        time_exit_avg_mfe_r=round(
+            avg([t.mfe_r for t in time_exit_trades]), 4
+        ),
+        time_exit_avg_mae_r=round(
+            avg([t.mae_r for t in time_exit_trades]), 4
+        ),
+
+        avg_cost_r=round(
+            avg([t.cost_r for t in trades]), 4
+        ),
+        total_cost_r=round(
+            sum(t.cost_r for t in trades), 2
+        ),
+
+        long_avg_cost_r=round(
+            avg([t.cost_r for t in long_trades]), 4
+        ),
+        short_avg_cost_r=round(
+            avg([t.cost_r for t in short_trades]), 4
+        ),
+
+        tp_avg_cost_r=round(
+            avg([t.cost_r for t in tp_trades]), 4
+        ),
+        stop_avg_cost_r=round(
+            avg([t.cost_r for t in stop_trades]), 4
+        ),
+        time_exit_avg_cost_r=round(
+            avg([t.cost_r for t in time_exit_trades]), 4
+        ),
     )
 
 
@@ -502,3 +694,99 @@ if __name__ == "__main__":
     print(f"Average R:    {result.average_r}")
     print(f"Profit factor:{result.profit_factor}")
     print(f"Max DD:       {result.max_drawdown_r}R")
+    print()
+    print("EXIT BREAKDOWN")
+    print("-" * 60)
+    print(f"TP:           {result.tp_count} | {result.tp_total_r}R")
+    print(f"STOP:         {result.stop_count} | {result.stop_total_r}R")
+    print(f"TIME_EXIT:    {result.time_exit_count} | {result.time_exit_total_r}R")
+    print()
+    print("DIRECTION BREAKDOWN")
+    print("-" * 60)
+
+    long_wr = (
+        result.long_wins / result.long_count * 100.0
+        if result.long_count else 0.0
+    )
+    short_wr = (
+        result.short_wins / result.short_count * 100.0
+        if result.short_count else 0.0
+    )
+
+    print(
+        f"LONG:         {result.long_count} trades | "
+        f"WR {long_wr:.2f}% | {result.long_total_r}R"
+    )
+    print(
+        f"SHORT:        {result.short_count} trades | "
+        f"WR {short_wr:.2f}% | {result.short_total_r}R"
+    )
+
+    print()
+    print("MONTHLY BREAKDOWN")
+    print("-" * 60)
+
+    print()
+    print("MFE / MAE ANALYSIS")
+    print("-" * 60)
+    print(
+        f"ALL:          Avg MFE {result.avg_mfe_r:.4f}R | "
+        f"Avg MAE {result.avg_mae_r:.4f}R"
+    )
+    print(
+        f"WINNERS:      Avg MFE {result.winners_avg_mfe_r:.4f}R | "
+        f"Avg MAE {result.winners_avg_mae_r:.4f}R"
+    )
+    print(
+        f"LOSERS:       Avg MFE {result.losers_avg_mfe_r:.4f}R | "
+        f"Avg MAE {result.losers_avg_mae_r:.4f}R"
+    )
+    print(
+        f"STOP trades:  Avg MFE {result.stop_avg_mfe_r:.4f}R"
+    )
+    print(
+        f"TIME_EXIT:    Avg MFE {result.time_exit_avg_mfe_r:.4f}R | "
+        f"Avg MAE {result.time_exit_avg_mae_r:.4f}R"
+    )
+
+    print()
+    print("COST ANALYSIS")
+    print("-" * 60)
+    print(
+        f"ALL:          Avg cost {result.avg_cost_r:.4f}R | "
+        f"Total cost {result.total_cost_r:.2f}R"
+    )
+    print(
+        f"LONG:         Avg cost {result.long_avg_cost_r:.4f}R"
+    )
+    print(
+        f"SHORT:        Avg cost {result.short_avg_cost_r:.4f}R"
+    )
+    print(
+        f"TP:           Avg cost {result.tp_avg_cost_r:.4f}R"
+    )
+    print(
+        f"STOP:         Avg cost {result.stop_avg_cost_r:.4f}R"
+    )
+    print(
+        f"TIME_EXIT:    Avg cost {result.time_exit_avg_cost_r:.4f}R"
+    )
+
+    print()
+    print("MONTHLY BREAKDOWN")
+    print("-" * 60)
+
+    for month in sorted(result.monthly_stats):
+        stats = result.monthly_stats[month]
+
+        wr = (
+            stats["wins"] / stats["trades"] * 100.0
+            if stats["trades"] else 0.0
+        )
+
+        print(
+            f"{month}: "
+            f"{stats['trades']} trades | "
+            f"WR {wr:.2f}% | "
+            f"{stats['total_r']:+.2f}R"
+        )

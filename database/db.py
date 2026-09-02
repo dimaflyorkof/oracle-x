@@ -561,6 +561,7 @@ def init_database():
             timeframe TEXT DEFAULT 'MTF',
 
             weights_json TEXT NOT NULL,
+            config_json TEXT,
             metrics_json TEXT,
 
             reason TEXT,
