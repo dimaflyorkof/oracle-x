@@ -276,3 +276,127 @@ if __name__ == "__main__":
 
     for feature, weight in weights.items():
         print(f"{feature:<12} {weight:.4f}")
+
+
+def learn_from_closed_signals(
+    symbol: str = "BTC",
+    model_version: str = "1.0",
+    learning_rate: float = 0.05,
+) -> Dict[str, float]:
+    if learning_rate <= 0 or learning_rate > 0.25:
+        raise ValueError("learning_rate має бути > 0 і <= 0.25")
+
+    current = get_weights(
+        symbol=symbol,
+        regime="GLOBAL",
+        timeframe="MTF",
+        model_version=model_version,
+    )
+
+    con = connect()
+
+    try:
+        rows = con.execute(
+            """
+            SELECT
+                decision,
+                result,
+                result_r,
+                market_regime
+            FROM signals
+            WHERE symbol = ?
+              AND status = 'CLOSED'
+              AND result IS NOT NULL
+              AND result_r IS NOT NULL
+            ORDER BY id
+            """,
+            (symbol,),
+        ).fetchall()
+
+    finally:
+        con.close()
+
+    if not rows:
+        return current
+
+    wins = 0
+    losses = 0
+    total_r = 0.0
+
+    for row in rows:
+        result_r = float(row["result_r"] or 0.0)
+        total_r += result_r
+
+        if result_r > 0:
+            wins += 1
+        elif result_r < 0:
+            losses += 1
+
+    sample_size = wins + losses
+
+    if sample_size == 0:
+        return current
+
+    win_rate = wins / sample_size
+    average_r = total_r / sample_size
+
+    # Поки що використовуємо дуже консервативне навчання.
+    # Якщо статистика позитивна — трохи підсилюємо structure/regime.
+    # Якщо негативна — трохи збільшуємо вагу momentum як фільтра.
+    proposed = current.copy()
+
+    if average_r > 0 and win_rate >= 0.55:
+        proposed["regime"] = current.get("regime", 0.40) + learning_rate * 0.5
+        proposed["structure"] = current.get("structure", 0.35) + learning_rate * 0.5
+        proposed["momentum"] = current.get("momentum", 0.25) - learning_rate
+
+    elif average_r < 0 or win_rate < 0.45:
+        proposed["regime"] = current.get("regime", 0.40) - learning_rate * 0.5
+        proposed["structure"] = current.get("structure", 0.35) - learning_rate * 0.5
+        proposed["momentum"] = current.get("momentum", 0.25) + learning_rate
+
+    normalized = normalize_weights(proposed)
+
+    now = utc_now()
+    con = connect()
+
+    try:
+        for feature_name, weight in normalized.items():
+            con.execute(
+                """
+                UPDATE feature_weights
+                SET weight = ?,
+                    sample_size = ?,
+                    wins = ?,
+                    losses = ?,
+                    win_rate = ?,
+                    average_r = ?,
+                    timestamp = ?,
+                    timestamp_unix = ?
+                WHERE symbol = ?
+                  AND regime = 'GLOBAL'
+                  AND timeframe = 'MTF'
+                  AND feature_name = ?
+                  AND model_version = ?
+                """,
+                (
+                    float(weight),
+                    sample_size,
+                    wins,
+                    losses,
+                    win_rate,
+                    average_r,
+                    now.isoformat(),
+                    int(now.timestamp()),
+                    symbol,
+                    feature_name,
+                    model_version,
+                ),
+            )
+
+        con.commit()
+
+    finally:
+        con.close()
+
+    return normalized
