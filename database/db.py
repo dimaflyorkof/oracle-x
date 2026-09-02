@@ -540,6 +540,100 @@ def init_database():
     """)
 
     # =====================================================
+    # MODEL REGISTRY
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS model_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            created_at TEXT NOT NULL,
+            created_at_unix INTEGER NOT NULL,
+
+            symbol TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+
+            status TEXT NOT NULL,
+
+            parent_version TEXT,
+
+            regime TEXT DEFAULT 'GLOBAL',
+            timeframe TEXT DEFAULT 'MTF',
+
+            weights_json TEXT NOT NULL,
+            metrics_json TEXT,
+
+            reason TEXT,
+
+            promoted_at TEXT,
+            rejected_at TEXT,
+
+            is_active INTEGER DEFAULT 0
+        )
+    """)
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_model_registry_unique
+        ON model_registry (
+            symbol,
+            model_version
+        )
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_model_registry_status
+        ON model_registry (
+            symbol,
+            status,
+            is_active
+        )
+    """)
+
+    # =====================================================
+    # EXPERIMENT REGISTRY
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS experiment_registry (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            created_at TEXT NOT NULL,
+            created_at_unix INTEGER NOT NULL,
+
+            symbol TEXT NOT NULL,
+
+            experiment_name TEXT NOT NULL,
+
+            champion_version TEXT NOT NULL,
+            challenger_version TEXT NOT NULL,
+
+            status TEXT NOT NULL,
+
+            hypothesis TEXT,
+
+            champion_metrics_json TEXT,
+            challenger_metrics_json TEXT,
+
+            improvement_percent REAL,
+
+            decision TEXT,
+            decision_reason TEXT,
+
+            started_at TEXT,
+            completed_at TEXT
+        )
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_experiment_registry
+        ON experiment_registry (
+            symbol,
+            status,
+            created_at_unix
+        )
+    """)
+
+    # =====================================================
     # PERFORMANCE
     # =====================================================
 
