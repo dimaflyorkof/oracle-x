@@ -36,6 +36,34 @@ def record_signal(symbol: str = "BTC") -> RecordedSignal:
 
     regime = analyze_regime(symbol)
 
+    scoring_data = decision.data.get("scoring", {})
+    details = scoring_data.get("details", {})
+    live_scores = details.get("live_scores", {})
+
+    regime_component = float(
+        scoring_data.get("regime_score", 0.0) or 0.0
+    ) / 100.0
+
+    structure_component = float(
+        scoring_data.get("structure_score", 0.0) or 0.0
+    ) / 100.0
+
+    momentum_component = float(
+        scoring_data.get("momentum_score", 0.0) or 0.0
+    ) / 100.0
+
+    orderflow_component = float(
+        live_scores.get("orderflow", 0.0) or 0.0
+    )
+
+    derivatives_component = float(
+        live_scores.get("derivatives", 0.0) or 0.0
+    )
+
+    liquidations_component = float(
+        live_scores.get("liquidations", 0.0) or 0.0
+    )
+
     now = utc_now()
     timestamp = now.isoformat()
     timestamp_unix = int(now.timestamp())
@@ -61,9 +89,15 @@ def record_signal(symbol: str = "BTC") -> RecordedSignal:
                 tp3,
                 risk_reward,
                 market_regime,
+                regime_component,
+                structure_component,
+                momentum_component,
+                orderflow_component,
+                derivatives_component,
+                liquidations_component,
                 status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 timestamp,
@@ -79,6 +113,12 @@ def record_signal(symbol: str = "BTC") -> RecordedSignal:
                 None,
                 decision.rr_tp2,
                 regime.regime,
+                regime_component,
+                structure_component,
+                momentum_component,
+                orderflow_component,
+                derivatives_component,
+                liquidations_component,
                 "OPEN",
             ),
         )

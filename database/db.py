@@ -369,6 +369,13 @@ def init_database():
 
             market_regime TEXT,
 
+            regime_component REAL,
+            structure_component REAL,
+            momentum_component REAL,
+            orderflow_component REAL,
+            derivatives_component REAL,
+            liquidations_component REAL,
+
             snapshot_id INTEGER,
 
             status TEXT DEFAULT 'OPEN',
