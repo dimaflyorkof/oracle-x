@@ -216,10 +216,14 @@ def analyze_score(symbol: str = "BTC") -> ScoringResult:
 
     # Live layer is intentionally capped.
     # It adjusts the core score but cannot dominate it.
+    orderflow_weight = weights.get("orderflow", 0.12)
+    derivatives_weight = weights.get("derivatives", 0.08)
+    liquidations_weight = weights.get("liquidations", 0.05)
+
     live_adjustment = (
-        live_scores["orderflow"] * 0.12
-        + live_scores["derivatives"] * 0.08
-        + live_scores["liquidations"] * 0.05
+        live_scores["orderflow"] * orderflow_weight
+        + live_scores["derivatives"] * derivatives_weight
+        + live_scores["liquidations"] * liquidations_weight
     )
 
     raw_score += live_adjustment

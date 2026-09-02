@@ -8,9 +8,12 @@ from database.db import connect
 
 
 DEFAULT_WEIGHTS = {
-    "regime": 0.40,
-    "structure": 0.35,
-    "momentum": 0.25,
+    "regime": 0.30,
+    "structure": 0.25,
+    "momentum": 0.20,
+    "orderflow": 0.12,
+    "derivatives": 0.08,
+    "liquidations": 0.05,
 }
 
 
