@@ -492,6 +492,47 @@ def init_database():
     """)
 
     # =====================================================
+    # ADAPTIVE FEATURE WEIGHTS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS feature_weights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            timestamp TEXT NOT NULL,
+            timestamp_unix INTEGER NOT NULL,
+
+            symbol TEXT NOT NULL,
+            regime TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+
+            feature_name TEXT NOT NULL,
+
+            weight REAL NOT NULL,
+            sample_size INTEGER DEFAULT 0,
+
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+
+            win_rate REAL,
+            average_r REAL,
+
+            model_version TEXT DEFAULT '1.0'
+        )
+    """)
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_feature_weights_unique
+        ON feature_weights (
+            symbol,
+            regime,
+            timeframe,
+            feature_name,
+            model_version
+        )
+    """)
+
+    # =====================================================
     # PERFORMANCE
     # =====================================================
 

@@ -6,6 +6,7 @@ from typing import Dict
 from core.regime import analyze_regime
 from core.structure import analyze_structure
 from core.momentum import analyze_momentum
+from learning.feature_weights import get_weights
 
 
 TIMEFRAME_WEIGHTS = {
@@ -99,11 +100,11 @@ def analyze_score(symbol: str = "BTC") -> ScoringResult:
         regime.confidence / 100.0
     )
 
-    # Initial engine weights.
-    # Later these values will be learned dynamically.
-    regime_weight = 0.40
-    structure_weight = 0.35
-    momentum_weight = 0.25
+    weights = get_weights(symbol)
+
+    regime_weight = weights.get("regime", 0.40)
+    structure_weight = weights.get("structure", 0.35)
+    momentum_weight = weights.get("momentum", 0.25)
 
     raw_score = (
         regime_component * regime_weight
