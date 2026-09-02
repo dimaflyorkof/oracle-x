@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from math import sqrt
 from typing import Dict, List, Optional
+from statistics import median
 
 from database.db import connect
 
@@ -31,6 +32,16 @@ class HistoricalTwinsResult:
     average_1h: Optional[float]
     average_4h: Optional[float]
     average_24h: Optional[float]
+    median_1h: Optional[float]
+    median_4h: Optional[float]
+    median_24h: Optional[float]
+    up_probability_1h: Optional[float]
+    up_probability_4h: Optional[float]
+    up_probability_24h: Optional[float]
+    weighted_1h: Optional[float]
+    weighted_4h: Optional[float]
+    weighted_24h: Optional[float]
+    historical_edge: float
 
     def to_dict(self) -> Dict:
         return {
@@ -42,6 +53,16 @@ class HistoricalTwinsResult:
             "average_1h": self.average_1h,
             "average_4h": self.average_4h,
             "average_24h": self.average_24h,
+            "median_1h": self.median_1h,
+            "median_4h": self.median_4h,
+            "median_24h": self.median_24h,
+            "up_probability_1h": self.up_probability_1h,
+            "up_probability_4h": self.up_probability_4h,
+            "up_probability_24h": self.up_probability_24h,
+            "weighted_1h": self.weighted_1h,
+            "weighted_4h": self.weighted_4h,
+            "weighted_24h": self.weighted_24h,
+            "historical_edge": self.historical_edge,
         }
 
 
@@ -257,6 +278,72 @@ def analyze_historical_twins(
 
         return round(sum(clean) / len(clean), 4)
 
+    def median_value(values):
+        clean = [v for v in values if v is not None]
+
+        if not clean:
+            return None
+
+        return round(median(clean), 4)
+
+    def up_probability(values):
+        clean = [v for v in values if v is not None]
+
+        if not clean:
+            return None
+
+        positive = sum(1 for value in clean if value > 0)
+        return round(positive / len(clean) * 100.0, 2)
+
+    def weighted_outcome(matches, attribute):
+        usable = [
+            match for match in matches
+            if getattr(match, attribute) is not None
+        ]
+
+        if not usable:
+            return None
+
+        total_weight = sum(match.similarity for match in usable)
+
+        if total_weight <= 0:
+            return None
+
+        value = sum(
+            getattr(match, attribute) * match.similarity
+            for match in usable
+        ) / total_weight
+
+        return round(value, 4)
+
+    returns_1h = [m.return_1h for m in matches]
+    returns_4h = [m.return_4h for m in matches]
+    returns_24h = [m.return_24h for m in matches]
+
+    weighted_1h = weighted_outcome(matches, "return_1h")
+    weighted_4h = weighted_outcome(matches, "return_4h")
+    weighted_24h = weighted_outcome(matches, "return_24h")
+
+    up_1h = up_probability(returns_1h)
+    up_4h = up_probability(returns_4h)
+    up_24h = up_probability(returns_24h)
+
+    edge_components = []
+
+    if up_1h is not None:
+        edge_components.append(abs(up_1h - 50.0) * 0.20)
+
+    if up_4h is not None:
+        edge_components.append(abs(up_4h - 50.0) * 0.30)
+
+    if up_24h is not None:
+        edge_components.append(abs(up_24h - 50.0) * 0.50)
+
+    historical_edge = min(
+        100.0,
+        sum(edge_components),
+    )
+
     return HistoricalTwinsResult(
         symbol=symbol,
         timeframe=timeframe,
@@ -266,15 +353,19 @@ def analyze_historical_twins(
             2,
         ),
         matches=matches,
-        average_1h=average(
-            [m.return_1h for m in matches]
-        ),
-        average_4h=average(
-            [m.return_4h for m in matches]
-        ),
-        average_24h=average(
-            [m.return_24h for m in matches]
-        ),
+        average_1h=average(returns_1h),
+        average_4h=average(returns_4h),
+        average_24h=average(returns_24h),
+        median_1h=median_value(returns_1h),
+        median_4h=median_value(returns_4h),
+        median_24h=median_value(returns_24h),
+        up_probability_1h=up_1h,
+        up_probability_4h=up_4h,
+        up_probability_24h=up_24h,
+        weighted_1h=weighted_1h,
+        weighted_4h=weighted_4h,
+        weighted_24h=weighted_24h,
+        historical_edge=round(historical_edge, 2),
     )
 
 
@@ -305,6 +396,20 @@ if __name__ == "__main__":
         )
 
     print()
-    print(f"Average 1h:  {result.average_1h}%")
-    print(f"Average 4h:  {result.average_4h}%")
-    print(f"Average 24h: {result.average_24h}%")
+    print(f"Average 1h:       {result.average_1h}%")
+    print(f"Average 4h:       {result.average_4h}%")
+    print(f"Average 24h:      {result.average_24h}%")
+    print()
+    print(f"Median 1h:        {result.median_1h}%")
+    print(f"Median 4h:        {result.median_4h}%")
+    print(f"Median 24h:       {result.median_24h}%")
+    print()
+    print(f"Up probability 1h:  {result.up_probability_1h}%")
+    print(f"Up probability 4h:  {result.up_probability_4h}%")
+    print(f"Up probability 24h: {result.up_probability_24h}%")
+    print()
+    print(f"Weighted 1h:      {result.weighted_1h}%")
+    print(f"Weighted 4h:      {result.weighted_4h}%")
+    print(f"Weighted 24h:     {result.weighted_24h}%")
+    print()
+    print(f"Historical Edge:  {result.historical_edge}%")
