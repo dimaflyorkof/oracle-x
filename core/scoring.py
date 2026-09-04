@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Dict
 
+import time
+
 from core.regime import analyze_regime
 from core.structure import analyze_structure
 from core.momentum import analyze_momentum
@@ -84,20 +86,24 @@ def latest_live_scores(symbol: str = "BTC") -> Dict[str, float]:
             (symbol,),
         ).fetchone()
 
+        now_unix = int(time.time())
+
         liquidations = con.execute(
             """
             SELECT
                 COALESCE(SUM(long_liquidations), 0) AS long_total,
                 COALESCE(SUM(short_liquidations), 0) AS short_total
-            FROM (
-                SELECT long_liquidations, short_liquidations
-                FROM liquidation_history
-                WHERE symbol = ?
-                ORDER BY timestamp_unix DESC
-                LIMIT 20
-            )
+            FROM liquidation_history
+            WHERE symbol = ?
+              AND source = 'binance_futures'
+              AND timestamp_unix > ?
+              AND timestamp_unix <= ?
             """,
-            (symbol,),
+            (
+                symbol,
+                now_unix - 900,
+                now_unix,
+            ),
         ).fetchone()
 
     finally:
