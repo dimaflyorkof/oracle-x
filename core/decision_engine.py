@@ -10,6 +10,7 @@ from core.scoring import analyze_score
 from core.risk import analyze_risk
 from learning.historical_twins import analyze_historical_twins
 from core.contradictions import analyze_contradictions
+from core.data_freshness import analyze_freshness
 
 
 @dataclass
@@ -174,6 +175,33 @@ def build_reasons(
 def analyze_decision(
     symbol: str = "BTC",
 ) -> DecisionResult:
+    freshness = analyze_freshness(symbol)
+
+    if not freshness.is_fresh:
+        return DecisionResult(
+            symbol=symbol,
+            decision="NO_TRADE",
+            confidence=0.0,
+            score=0.0,
+            entry=None,
+            stop=None,
+            tp1=None,
+            tp2=None,
+            rr_tp1=None,
+            rr_tp2=None,
+            reasons_for=[],
+            reasons_against=[],
+            warnings=[
+                "trade blocked by stale market data",
+                "stale timeframes: " + ", ".join(
+                    freshness.stale_timeframes
+                ),
+            ],
+            data={
+                "freshness": freshness.to_dict(),
+            },
+        )
+
     scoring = analyze_score(symbol)
     risk = analyze_risk(symbol)
     contradictions = analyze_contradictions(symbol)

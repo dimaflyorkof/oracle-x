@@ -77,6 +77,7 @@ def latest_live_scores(symbol: str = "BTC") -> Dict[str, float]:
             SELECT long_short_ratio, taker_ratio
             FROM derivatives_history
             WHERE symbol = ?
+              AND source = 'binance_futures'
             ORDER BY timestamp_unix DESC
             LIMIT 1
             """,

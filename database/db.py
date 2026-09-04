@@ -406,7 +406,14 @@ def init_database():
 
             symbol TEXT NOT NULL,
 
+            model_version TEXT,
+
             side TEXT NOT NULL,
+
+            entry_reason TEXT,
+            exit_reason TEXT,
+
+            regime TEXT,
 
             entry_price REAL,
             stop_loss REAL,
@@ -425,6 +432,12 @@ def init_database():
             pnl REAL,
             pnl_percent REAL,
             result_r REAL,
+
+            mfe_r REAL,
+            mae_r REAL,
+
+            fee_cost REAL,
+            slippage_cost REAL,
 
             closed_timestamp TEXT,
 
