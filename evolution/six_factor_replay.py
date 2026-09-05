@@ -417,25 +417,41 @@ def replay_point(
     weighted_structure = 0.0
     weighted_momentum = 0.0
 
+    # ts is the 15m signal candle OPEN time.
+    # The decision becomes available only at its close.
+    signal_close_ts = ts + 15 * 60
+
     for tf, tf_weight in TIMEFRAME_WEIGHTS.items():
+        timeframe_seconds = {
+            "15m": 15 * 60,
+            "1h": 60 * 60,
+            "4h": 4 * 60 * 60,
+        }[tf]
+
+        # Use only higher-timeframe candles fully closed
+        # by the 15m decision time.
+        last_closed_open_ts = (
+            signal_close_ts - timeframe_seconds
+        )
+
         regime_rows = rows_until(
             data[tf],
             indexes[tf],
-            ts,
+            last_closed_open_ts,
             120,
         )
 
         structure_rows = rows_until(
             data[tf],
             indexes[tf],
-            ts,
+            last_closed_open_ts,
             250,
         )
 
         momentum_rows = rows_until(
             data[tf],
             indexes[tf],
-            ts,
+            last_closed_open_ts,
             120,
         )
 
@@ -535,7 +551,7 @@ def replay_point(
 
     live = historical_live_scores(
         symbol,
-        ts,
+        signal_close_ts,
         liquidation_window_seconds,
     )
 
