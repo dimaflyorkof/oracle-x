@@ -242,10 +242,22 @@ def historical_score(
     momentums = {}
 
     for tf in ("15m", "1h", "4h"):
+        # ts is the open time of the 15m signal candle.
+        # The decision is made only after that candle closes.
+        signal_close_ts = ts + 15 * 60
+        timeframe_seconds = {
+            "15m": 15 * 60,
+            "1h": 60 * 60,
+            "4h": 4 * 60 * 60,
+        }[tf]
+
+        # Include only candles fully closed by decision time.
+        last_closed_open_ts = signal_close_ts - timeframe_seconds
+
         rows = rows_until(
             data[tf],
             timestamp_index[tf],
-            ts,
+            last_closed_open_ts,
             120,
         )
 
