@@ -441,10 +441,95 @@ def init_database():
 
             closed_timestamp TEXT,
 
+            entry_candle_unix INTEGER,
+            exit_candle_unix INTEGER,
+
             FOREIGN KEY(signal_id)
             REFERENCES signals(id)
         )
     """)
+
+    # =====================================================
+    # PAPER PENDING ENTRIES
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS paper_pending_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            signal_id INTEGER,
+
+            created_timestamp TEXT NOT NULL,
+            created_timestamp_unix INTEGER NOT NULL,
+
+            signal_candle_timestamp TEXT,
+            signal_candle_unix INTEGER NOT NULL,
+            execute_after_unix INTEGER NOT NULL,
+
+            symbol TEXT NOT NULL,
+            model_version TEXT NOT NULL,
+            side TEXT NOT NULL,
+
+            score REAL,
+            confidence REAL,
+            agreement REAL,
+            signal_atr REAL,
+
+            stop_atr REAL NOT NULL,
+            tp_r REAL NOT NULL,
+            risk_percent REAL NOT NULL DEFAULT 1.0,
+
+            regime TEXT,
+            entry_reason TEXT,
+
+            status TEXT NOT NULL DEFAULT 'PENDING',
+
+            executed_timestamp TEXT,
+            executed_timestamp_unix INTEGER,
+            paper_trade_id INTEGER,
+            cancel_reason TEXT,
+
+            UNIQUE (
+                symbol,
+                model_version,
+                signal_candle_unix
+            )
+        )
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_paper_pending_status_execute
+        ON paper_pending_entries (
+            status,
+            execute_after_unix
+        )
+    """)
+
+    # Upgrade older paper_trades tables without deleting data.
+    required_paper_trade_columns = (
+        ("model_version", "TEXT"),
+        ("entry_reason", "TEXT"),
+        ("exit_reason", "TEXT"),
+        ("mfe_r", "REAL"),
+        ("mae_r", "REAL"),
+        ("fee_cost", "REAL"),
+        ("slippage_cost", "REAL"),
+        ("regime", "TEXT"),
+        ("entry_candle_unix", "INTEGER"),
+        ("exit_candle_unix", "INTEGER"),
+    )
+
+    existing_paper_trade_columns = {
+        row[1]
+        for row in cur.execute("PRAGMA table_info(paper_trades)")
+    }
+
+    for column_name, column_type in required_paper_trade_columns:
+        if column_name not in existing_paper_trade_columns:
+            cur.execute(
+                f"ALTER TABLE paper_trades "
+                f"ADD COLUMN {column_name} {column_type}"
+            )
 
     # =====================================================
     # HISTORICAL TWINS
