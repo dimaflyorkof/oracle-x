@@ -1,0 +1,17 @@
+[Unit]
+Description=ORACLE X V5.1 Frozen Forward Shadow
+Wants=network-online.target
+After=network-online.target oracle-ohlcv.service oracle-x-orderflow-kline.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m evolution.v5_1_forward_shadow
+Restart=always
+RestartSec=15
+Nice=10
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
