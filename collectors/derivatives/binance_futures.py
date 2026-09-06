@@ -100,6 +100,9 @@ def fetch_long_short():
         "long_short_ratio": float(
             row["longShortRatio"]
         ),
+        "long_short_timestamp_unix": int(
+            row["timestamp"]
+        ) // 1000,
     }
 
 
@@ -128,6 +131,9 @@ def fetch_taker():
         "taker_ratio": float(
             row["buySellRatio"]
         ),
+        "taker_timestamp_unix": int(
+            row["timestamp"]
+        ) // 1000,
     }
 
 
@@ -160,6 +166,28 @@ def fetch_snapshot():
     result.update(
         fetch_taker()
     )
+
+    event_candidates = [
+        result.get("long_short_timestamp_unix"),
+        result.get("taker_timestamp_unix"),
+    ]
+    event_candidates = [
+        int(value)
+        for value in event_candidates
+        if value is not None
+    ]
+
+    result["event_timestamp_unix"] = (
+        max(event_candidates)
+        if event_candidates
+        else int(now.timestamp()) // 300 * 300
+    )
+    result["available_at_unix"] = max(
+        int(now.timestamp()),
+        result["event_timestamp_unix"] + 300,
+    )
+    result["data_interval_seconds"] = 300
+    result["data_kind"] = "LIVE_5M_COMPOSITE"
 
     return result
 
@@ -215,6 +243,10 @@ def save_snapshot(snapshot):
                 taker_buy_volume = ?,
                 taker_sell_volume = ?,
                 taker_ratio = ?,
+                event_timestamp_unix = ?,
+                available_at_unix = ?,
+                data_interval_seconds = ?,
+                data_kind = ?,
                 raw_json = ?
             WHERE id = ?
             """,
@@ -244,6 +276,18 @@ def save_snapshot(snapshot):
                 snapshot.get(
                     "taker_ratio"
                 ),
+                snapshot.get(
+                    "event_timestamp_unix"
+                ),
+                snapshot.get(
+                    "available_at_unix"
+                ),
+                snapshot.get(
+                    "data_interval_seconds"
+                ),
+                snapshot.get(
+                    "data_kind"
+                ),
                 json.dumps(
                     raw,
                     ensure_ascii=False,
@@ -270,9 +314,13 @@ def save_snapshot(snapshot):
                 taker_buy_volume,
                 taker_sell_volume,
                 taker_ratio,
+                event_timestamp_unix,
+                available_at_unix,
+                data_interval_seconds,
+                data_kind,
                 raw_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 dt.isoformat(),
@@ -302,6 +350,18 @@ def save_snapshot(snapshot):
                 ),
                 snapshot.get(
                     "taker_ratio"
+                ),
+                snapshot.get(
+                    "event_timestamp_unix"
+                ),
+                snapshot.get(
+                    "available_at_unix"
+                ),
+                snapshot.get(
+                    "data_interval_seconds"
+                ),
+                snapshot.get(
+                    "data_kind"
                 ),
                 json.dumps(
                     raw,

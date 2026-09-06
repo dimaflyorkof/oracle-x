@@ -8,3 +8,7 @@ backups/
 *.db
 database/*.db
 oracle_status.txt
+*.tar.gz
+*.patch
+*_result.json
+nohup.out

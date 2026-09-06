@@ -11,6 +11,7 @@ from core.risk import analyze_risk
 from learning.historical_twins import analyze_historical_twins
 from core.contradictions import analyze_contradictions
 from core.data_freshness import analyze_freshness
+from core.market_intelligence import analyze_market_intelligence
 
 
 @dataclass
@@ -203,15 +204,38 @@ def analyze_decision(
         )
 
     scoring = analyze_score(symbol)
-    risk = analyze_risk(symbol)
+    risk = analyze_risk(
+        symbol,
+        scoring=scoring,
+    )
     contradictions = analyze_contradictions(symbol)
+
+    intelligence = None
+    intelligence_error = None
+
+    try:
+        intelligence = analyze_market_intelligence(symbol)
+    except Exception as exc:
+        intelligence_error = f"{type(exc).__name__}: {exc}"
 
     reasons_for, reasons_against, warnings, data = build_reasons(
         symbol
     )
 
+    data["scoring"] = scoring.to_dict()
     data["risk"] = risk.to_dict()
     data["contradictions"] = contradictions.to_dict()
+
+    if intelligence is not None:
+        data["market_intelligence"] = asdict(intelligence)
+    else:
+        data["market_intelligence"] = {
+            "status": "ERROR",
+            "error": intelligence_error,
+        }
+        warnings.append(
+            f"market intelligence unavailable: {intelligence_error}"
+        )
 
     if risk.decision != "ALLOW":
         decision = "NO_TRADE"
@@ -225,7 +249,68 @@ def analyze_decision(
     else:
         decision = "NO_TRADE"
 
+    # Market Intelligence is a context gate, not another entry signal.
+    # It can allow the direction selected by price logic or block it.
+    if intelligence is None:
+        if decision in ("LONG", "SHORT"):
+            decision = "NO_TRADE"
+            warnings.append(
+                "trade blocked: market intelligence failed closed"
+            )
+
+    elif intelligence.data_coverage < 0.65:
+        if decision in ("LONG", "SHORT"):
+            decision = "NO_TRADE"
+        warnings.append(
+            "trade blocked: market intelligence coverage "
+            f"{intelligence.data_coverage:.1%} < 65.0%"
+        )
+
+    elif decision == "LONG":
+        if intelligence.decision != "LONG_ALLOWED":
+            decision = "NO_TRADE"
+            warnings.append(
+                "LONG blocked by market intelligence: "
+                f"{intelligence.decision}, "
+                f"score={intelligence.score:.3f}"
+            )
+        else:
+            reasons_for.append(
+                "market intelligence allows LONG: "
+                f"state={intelligence.market_state}, "
+                f"flow={intelligence.flow_state}, "
+                f"score={intelligence.score:.3f}"
+            )
+
+    elif decision == "SHORT":
+        if intelligence.decision != "SHORT_ALLOWED":
+            decision = "NO_TRADE"
+            warnings.append(
+                "SHORT blocked by market intelligence: "
+                f"{intelligence.decision}, "
+                f"score={intelligence.score:.3f}"
+            )
+        else:
+            reasons_against.append(
+                "market intelligence allows SHORT: "
+                f"state={intelligence.market_state}, "
+                f"flow={intelligence.flow_state}, "
+                f"score={intelligence.score:.3f}"
+            )
+
+    elif intelligence.decision == "BLOCK":
+        warnings.append(
+            "market intelligence context is neutral/conflicted: "
+            f"score={intelligence.score:.3f}"
+        )
+
     confidence = scoring.confidence
+
+    if intelligence is not None:
+        confidence *= (
+            0.70
+            + 0.30 * intelligence.confidence
+        )
 
     if contradictions.severity == "MEDIUM":
         confidence *= 0.85
@@ -255,9 +340,16 @@ def analyze_decision(
             f"conflict: {item}"
         )
 
-    if decision == "NO_TRADE":
+    if (
+        decision == "NO_TRADE"
+        and risk.decision != "ALLOW"
+    ):
         warnings.append(
             f"trade rejected: {risk.reason}"
+        )
+    elif decision == "NO_TRADE":
+        warnings.append(
+            "trade rejected by decision/context filters"
         )
 
     if decision == "LONG":

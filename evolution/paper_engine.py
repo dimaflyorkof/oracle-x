@@ -137,6 +137,7 @@ def open_paper_trade(
     fee_cost: float = 0.0,
     slippage_cost: float = 0.0,
     signal_id: Optional[int] = None,
+    entry_candle_unix: Optional[int] = None,
 ) -> int:
     side = side.upper()
 
@@ -184,6 +185,7 @@ def open_paper_trade(
                 signal_id,
                 timestamp,
                 timestamp_unix,
+                entry_candle_unix,
                 symbol,
                 model_version,
                 side,
@@ -200,12 +202,13 @@ def open_paper_trade(
                 fee_cost,
                 slippage_cost
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?)
             """,
             (
                 signal_id,
                 timestamp,
                 timestamp_unix,
+                entry_candle_unix,
                 symbol,
                 model_version,
                 side,

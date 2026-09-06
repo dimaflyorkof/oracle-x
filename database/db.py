@@ -101,8 +101,105 @@ def init_database():
 
             futures_basis REAL,
 
-            raw_json TEXT
+            raw_json TEXT,
+
+            event_timestamp_unix INTEGER,
+            available_at_unix INTEGER,
+            data_interval_seconds INTEGER,
+            data_kind TEXT
         )
+    """)
+
+    # Upgrade existing databases without deleting historical rows.  The
+    # legacy timestamp_unix column is retained for backward compatibility;
+    # new causal readers must filter by available_at_unix.
+    required_derivative_columns = (
+        ("event_timestamp_unix", "INTEGER"),
+        ("available_at_unix", "INTEGER"),
+        ("data_interval_seconds", "INTEGER"),
+        ("data_kind", "TEXT"),
+    )
+
+    existing_derivative_columns = {
+        row[1]
+        for row in cur.execute("PRAGMA table_info(derivatives_history)")
+    }
+
+    for column_name, column_type in required_derivative_columns:
+        if column_name not in existing_derivative_columns:
+            cur.execute(
+                f"ALTER TABLE derivatives_history "
+                f"ADD COLUMN {column_name} {column_type}"
+            )
+
+    cur.execute("""
+        UPDATE derivatives_history
+        SET event_timestamp_unix = timestamp_unix
+        WHERE event_timestamp_unix IS NULL
+    """)
+
+    cur.execute("""
+        UPDATE derivatives_history
+        SET data_interval_seconds = CASE
+            WHEN funding_rate IS NOT NULL
+              AND open_interest IS NULL
+              AND long_short_ratio IS NULL
+              AND taker_ratio IS NULL
+            THEN 0
+            WHEN source = 'binance_futures'
+              AND raw_json IS NOT NULL
+            THEN 300
+            WHEN taker_ratio IS NOT NULL
+              OR long_short_ratio IS NOT NULL
+              OR open_interest IS NOT NULL
+            THEN 3600
+            ELSE 0
+        END
+        WHERE data_interval_seconds IS NULL
+    """)
+
+    cur.execute("""
+        UPDATE derivatives_history
+        SET data_kind = CASE
+            WHEN funding_rate IS NOT NULL
+              AND open_interest IS NULL
+              AND long_short_ratio IS NULL
+              AND taker_ratio IS NULL
+            THEN 'EVENT'
+            WHEN source = 'binance_futures'
+              AND raw_json IS NOT NULL
+            THEN 'LIVE_5M_COMPOSITE'
+            WHEN data_interval_seconds = 3600
+            THEN 'HISTORICAL_HOURLY_AGGREGATE'
+            ELSE 'EVENT'
+        END
+        WHERE data_kind IS NULL
+    """)
+
+    cur.execute("""
+        UPDATE derivatives_history
+        SET available_at_unix = CASE
+            WHEN data_kind = 'LIVE_5M_COMPOSITE'
+            THEN event_timestamp_unix + 300
+            WHEN data_kind = 'HISTORICAL_HOURLY_AGGREGATE'
+            THEN event_timestamp_unix + 3600
+            ELSE event_timestamp_unix
+        END
+        WHERE available_at_unix IS NULL
+    """)
+
+    # Earlier contract versions classified raw JSON funding backfills as live
+    # 5m composites.  Funding-only records are point-in-time events.
+    cur.execute("""
+        UPDATE derivatives_history
+        SET data_interval_seconds = 0,
+            data_kind = 'EVENT',
+            event_timestamp_unix = timestamp_unix,
+            available_at_unix = timestamp_unix
+        WHERE funding_rate IS NOT NULL
+          AND open_interest IS NULL
+          AND long_short_ratio IS NULL
+          AND taker_ratio IS NULL
     """)
 
     cur.execute("""
@@ -111,6 +208,15 @@ def init_database():
             symbol,
             source,
             timestamp_unix
+        )
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_derivatives_available
+        ON derivatives_history (
+            symbol,
+            source,
+            available_at_unix
         )
     """)
 
