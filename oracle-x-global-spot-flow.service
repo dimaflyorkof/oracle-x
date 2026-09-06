@@ -1,0 +1,17 @@
+[Unit]
+Description=ORACLE X Coinbase and Kraken Spot Trade Flow Collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m collectors.market.global_spot_flow_collector
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+MemoryMax=256M
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
