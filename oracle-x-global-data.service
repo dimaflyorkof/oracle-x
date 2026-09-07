@@ -1,0 +1,17 @@
+[Unit]
+Description=ORACLE X Official Global Data Collector V1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/oracle-x
+EnvironmentFile=-/root/oracle-x/.env
+ExecStart=/root/oracle-x/venv/bin/python -u -m collectors.global_data.official_global_collector
+Nice=10
+MemoryMax=256M
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target
