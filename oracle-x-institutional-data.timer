@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh ORACLE X official institutional data every six hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:20:00 UTC
+Persistent=true
+RandomizedDelaySec=180
+Unit=oracle-x-institutional-data.service
+
+[Install]
+WantedBy=timers.target

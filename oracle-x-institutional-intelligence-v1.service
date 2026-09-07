@@ -1,0 +1,17 @@
+[Unit]
+Description=ORACLE X Institutional Intelligence V1 Shadow
+After=network-online.target oracle-x-global-data.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m evolution.institutional_intelligence_v1_shadow
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+MemoryMax=256M
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

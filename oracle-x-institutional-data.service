@@ -1,0 +1,12 @@
+[Unit]
+Description=ORACLE X Official Institutional Data Collector V1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m collectors.institutional.official_institutional_collector
+TimeoutStartSec=120
+MemoryMax=256M
+Environment=PYTHONUNBUFFERED=1
