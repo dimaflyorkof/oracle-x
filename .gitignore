@@ -12,3 +12,10 @@ oracle_status.txt
 *.patch
 *_result.json
 nohup.out
+*.db-wal
+*.db-shm
+/runtime/
+/oracle_x_forward_control_center_v1/
+/oracle_x_global_intelligence_v2/
+/oracle_x_reliability_guard_v1/
+/global_intelligence_readiness.json

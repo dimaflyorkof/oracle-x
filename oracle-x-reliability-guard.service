@@ -1,0 +1,20 @@
+[Unit]
+Description=ORACLE X Reliability Guard V1
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m operations.reliability_guard
+Restart=always
+RestartSec=15
+Nice=10
+Environment=PYTHONUNBUFFERED=1
+Environment=ORACLE_X_DB=/root/oracle-x/database/oracle_x.db
+MemoryMax=256M
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

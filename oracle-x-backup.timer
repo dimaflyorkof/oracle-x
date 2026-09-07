@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily ORACLE X verified database backup
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=oracle-x-backup.service
+
+[Install]
+WantedBy=timers.target

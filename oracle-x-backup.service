@@ -1,0 +1,15 @@
+[Unit]
+Description=ORACLE X Verified SQLite Backup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m operations.backup_database
+Nice=15
+IOSchedulingClass=idle
+Environment=PYTHONUNBUFFERED=1
+Environment=ORACLE_X_DB=/root/oracle-x/database/oracle_x.db
+MemoryMax=256M
+NoNewPrivileges=true
+PrivateTmp=true
