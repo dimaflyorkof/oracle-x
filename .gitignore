@@ -19,3 +19,5 @@ nohup.out
 /oracle_x_global_intelligence_v2/
 /oracle_x_reliability_guard_v1/
 /global_intelligence_readiness.json
+/oracle_x_global_data_layer_v1_*/
+/oracle_x_global_data_layer_v1_*.tar.gz

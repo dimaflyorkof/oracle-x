@@ -10,7 +10,7 @@ from database.db import connect
 EXPECTED = {
     "bls_public_data_api": "ACTIVE_OR_DEGRADED",
     "federal_reserve_monetary_rss": "ACTIVE_OR_DEGRADED",
-    "alfred_vintages": "PENDING",
+    "alfred_vintages": "ACTIVE_OR_DEGRADED",
     "cftc_cot": "ACTIVE_OR_DEGRADED",
     "cme_positioning": "PENDING",
     "btc_etf_flows": "PENDING",

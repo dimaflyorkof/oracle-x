@@ -20,7 +20,7 @@ FED_RSS_URL = "https://www.federalreserve.gov/feeds/press_monetary.xml"
 BLS_CALENDAR_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 CFTC_COT_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
 CFTC_BTC_CONTRACT = "133741"
-USER_AGENT = "ORACLE-X-Global-Data-Layer/1.0"
+USER_AGENT = "ORACLE-X-Global-Data-Layer/1.2"
 
 BLS_SERIES = {
     "CUUR0000SA0": ("US_CPI_ALL", "index"),
@@ -558,7 +558,7 @@ def register_sources(con) -> None:
     registry = (
         ("bls_public_data_api", "MACRO", "U.S. Bureau of Labor Statistics", BLS_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "Live observations; historical release-time backfill not yet authorized"),
         ("federal_reserve_monetary_rss", "CENTRAL_BANK", "Board of Governors of the Federal Reserve System", FED_RSS_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "Official publication timestamps"),
-        ("alfred_vintages", "MACRO", "Federal Reserve Bank of St. Louis", "https://api.stlouisfed.org/fred/", "OFFICIAL_PRIMARY", 0, "PENDING", "Requires API key and vintage-time contract"),
+        ("alfred_vintages", "MACRO", "Federal Reserve Bank of St. Louis", "https://api.stlouisfed.org/fred/", "OFFICIAL_PRIMARY", 1, "BACKTEST_CANDIDATE", "Initial-release vintages use conservative next-day availability; shadow/context only"),
         ("cftc_cot", "POSITIONING", "U.S. Commodity Futures Trading Commission", CFTC_COT_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "CME Bitcoin contract 133741; historical rows causal only from first observed_at"),
         ("cme_positioning", "INSTITUTIONAL", "CME Group", None, "OFFICIAL_LICENSED", 0, "PENDING", "Use only through an authorized market-data agreement"),
         ("btc_etf_flows", "INSTITUTIONAL", "SEC and fund issuers", None, "OFFICIAL_FRAGMENTED", 0, "PENDING", "No single official free consolidated daily-flow API"),
@@ -584,7 +584,7 @@ def register_sources(con) -> None:
             """,
             (source, category, authority, endpoint, trust, enabled, state, notes),
         )
-    for source in ("alfred_vintages", "cme_positioning", "btc_etf_flows"):
+    for source in ("cme_positioning", "btc_etf_flows"):
         con.execute(
             """
             INSERT OR IGNORE INTO global_source_health (

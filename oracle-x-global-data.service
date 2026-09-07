@@ -1,5 +1,5 @@
 [Unit]
-Description=ORACLE X Official Global Data Collector V1
+Description=ORACLE X Official Global Data Collector V1.2.2
 After=network-online.target
 Wants=network-online.target
 

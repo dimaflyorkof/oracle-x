@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh ORACLE X ALFRED vintages daily
+
+[Timer]
+OnCalendar=*-*-* 04:10:00 UTC
+RandomizedDelaySec=5min
+Persistent=true
+Unit=oracle-x-alfred-vintage.service
+
+[Install]
+WantedBy=timers.target
