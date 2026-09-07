@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 import requests
 
 from core.market_intelligence import analyze_market_intelligence
+from core.global_intelligence_v2 import analyze_global_intelligence_v2
 from database.db import connect
 from evolution.backtest import load_rows
 from evolution.flow_edge_search_v3 import (
@@ -81,10 +82,36 @@ def init_shadow_schema() -> None:
                 intelligence_confidence REAL,
                 intelligence_coverage REAL,
                 intelligence_allowed INTEGER,
-                intelligence_json TEXT
+                intelligence_json TEXT,
+                global_v2_decision TEXT,
+                global_v2_score REAL,
+                global_v2_confidence REAL,
+                global_v2_coverage REAL,
+                global_v2_allowed INTEGER,
+                global_v2_json TEXT
             )
             """
         )
+        evaluation_columns = {
+            str(row["name"])
+            for row in con.execute(
+                "PRAGMA table_info(shadow_v5_1_evaluations)"
+            ).fetchall()
+        }
+        required_evaluation_columns = (
+            ("global_v2_decision", "TEXT"),
+            ("global_v2_score", "REAL"),
+            ("global_v2_confidence", "REAL"),
+            ("global_v2_coverage", "REAL"),
+            ("global_v2_allowed", "INTEGER"),
+            ("global_v2_json", "TEXT"),
+        )
+        for name, column_type in required_evaluation_columns:
+            if name not in evaluation_columns:
+                con.execute(
+                    f"ALTER TABLE shadow_v5_1_evaluations "
+                    f"ADD COLUMN {name} {column_type}"
+                )
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS shadow_v5_1_trades (
@@ -108,6 +135,12 @@ def init_shadow_schema() -> None:
                 global_decision TEXT,
                 global_score REAL,
                 global_coverage REAL,
+                global_v2_allowed INTEGER,
+                global_v2_decision TEXT,
+                global_v2_score REAL,
+                global_v2_confidence REAL,
+                global_v2_coverage REAL,
+                global_v2_json TEXT,
                 exit_price REAL,
                 exit_reason TEXT,
                 exit_candle_unix INTEGER,
@@ -119,6 +152,26 @@ def init_shadow_schema() -> None:
             )
             """
         )
+        trade_columns = {
+            str(row["name"])
+            for row in con.execute(
+                "PRAGMA table_info(shadow_v5_1_trades)"
+            ).fetchall()
+        }
+        required_trade_columns = (
+            ("global_v2_allowed", "INTEGER"),
+            ("global_v2_decision", "TEXT"),
+            ("global_v2_score", "REAL"),
+            ("global_v2_confidence", "REAL"),
+            ("global_v2_coverage", "REAL"),
+            ("global_v2_json", "TEXT"),
+        )
+        for name, column_type in required_trade_columns:
+            if name not in trade_columns:
+                con.execute(
+                    f"ALTER TABLE shadow_v5_1_trades "
+                    f"ADD COLUMN {name} {column_type}"
+                )
         con.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_shadow_v5_1_trade_status
@@ -200,12 +253,19 @@ def record_evaluation(
     side: Optional[str] = None,
     intelligence=None,
     intelligence_allowed: Optional[bool] = None,
+    intelligence_v2=None,
+    intelligence_v2_allowed: Optional[bool] = None,
 ) -> bool:
     now = int(time.time())
     point_json = json.dumps(asdict(point), ensure_ascii=False) if point else None
     intelligence_json = (
         json.dumps(asdict(intelligence), ensure_ascii=False)
         if intelligence is not None
+        else None
+    )
+    intelligence_v2_json = (
+        json.dumps(asdict(intelligence_v2), ensure_ascii=False)
+        if intelligence_v2 is not None
         else None
     )
     con = connect()
@@ -218,8 +278,11 @@ def record_evaluation(
                 action, reason, side, point_json,
                 intelligence_decision, intelligence_score,
                 intelligence_confidence, intelligence_coverage,
-                intelligence_allowed, intelligence_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                intelligence_allowed, intelligence_json,
+                global_v2_decision, global_v2_score,
+                global_v2_confidence, global_v2_coverage,
+                global_v2_allowed, global_v2_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 iso(now), now, int(signal_ts), int(signal_ts) + 3600,
@@ -230,6 +293,16 @@ def record_evaluation(
                 getattr(intelligence, "data_coverage", None),
                 None if intelligence_allowed is None else int(intelligence_allowed),
                 intelligence_json,
+                getattr(intelligence_v2, "decision", None),
+                getattr(intelligence_v2, "score", None),
+                getattr(intelligence_v2, "confidence", None),
+                getattr(intelligence_v2, "data_coverage", None),
+                (
+                    None
+                    if intelligence_v2_allowed is None
+                    else int(intelligence_v2_allowed)
+                ),
+                intelligence_v2_json,
             ),
         )
         con.commit()
@@ -372,6 +445,8 @@ def create_trade(
     entry: float,
     intelligence,
     global_allowed: bool,
+    intelligence_v2,
+    global_v2_allowed: bool,
 ) -> Optional[int]:
     distance = point.atr_1h * FROZEN.stop_atr
     if distance <= 0:
@@ -400,7 +475,10 @@ def create_trade(
                 entry_price, stop_loss, take_profit, atr_1h,
                 risk_price, fee_bps, slippage_bps, cost_r,
                 global_allowed, global_decision, global_score, global_coverage
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                , global_v2_allowed, global_v2_decision,
+                global_v2_score, global_v2_confidence,
+                global_v2_coverage, global_v2_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 MODEL_VERSION, iso(now), now,
@@ -409,6 +487,10 @@ def create_trade(
                 risk_price, FEE_BPS, SLIPPAGE_BPS, cost_r,
                 int(global_allowed), intelligence.decision,
                 intelligence.score, intelligence.data_coverage,
+                int(global_v2_allowed), intelligence_v2.decision,
+                intelligence_v2.score, intelligence_v2.confidence,
+                intelligence_v2.data_coverage,
+                json.dumps(asdict(intelligence_v2), ensure_ascii=False),
             ),
         )
         con.commit()
@@ -580,20 +662,41 @@ def evaluate_latest(now_unix: int) -> Dict:
         record_evaluation(signal_ts, "DERIVATIVES_BLOCKED", "Frozen derivatives veto", current, direction)
         return {"action": "DERIVATIVES_BLOCKED", "side": direction}
     intelligence = analyze_market_intelligence(SYMBOL, as_of_ts=decision_ts)
+    intelligence_v2 = analyze_global_intelligence_v2(
+        SYMBOL,
+        as_of_ts=decision_ts,
+    )
     required = "LONG_ALLOWED" if direction == "LONG" else "SHORT_ALLOWED"
     global_allowed = (
         intelligence.data_coverage >= 0.65
         and intelligence.decision == required
     )
+    global_v2_allowed = (
+        intelligence_v2.data_coverage >= 0.55
+        and intelligence_v2.decision == required
+    )
     entry = fetch_exact_entry_open(decision_ts)
     if entry is None:
         return {"action": "WAIT", "reason": "EXACT_ENTRY_OPEN_UNAVAILABLE"}
-    trade_id = create_trade(current, direction, entry, intelligence, global_allowed)
+    trade_id = create_trade(
+        current,
+        direction,
+        entry,
+        intelligence,
+        global_allowed,
+        intelligence_v2,
+        global_v2_allowed,
+    )
     if trade_id is None:
         return {"action": "RACE_SKIPPED", "reason": "Trade already exists"}
     record_evaluation(
         signal_ts, "TRADE_OPENED", f"shadow_trade_id={trade_id}",
-        current, direction, intelligence, global_allowed,
+        current,
+        direction,
+        intelligence,
+        global_allowed,
+        intelligence_v2,
+        global_v2_allowed,
     )
     return {
         "action": "TRADE_OPENED",
@@ -602,6 +705,8 @@ def evaluate_latest(now_unix: int) -> Dict:
         "entry": round(entry, 2),
         "global_allowed": global_allowed,
         "global_decision": intelligence.decision,
+        "global_v2_allowed": global_v2_allowed,
+        "global_v2_decision": intelligence_v2.decision,
     }
 
 
@@ -609,7 +714,8 @@ def summary() -> Dict:
     con = connect()
     try:
         rows = con.execute(
-            "SELECT result_r, global_allowed FROM shadow_v5_1_trades "
+            "SELECT result_r, global_allowed, global_v2_allowed "
+            "FROM shadow_v5_1_trades "
             "WHERE status='CLOSED' ORDER BY id"
         ).fetchall()
         open_count = int(con.execute(
@@ -622,12 +728,18 @@ def summary() -> Dict:
         float(row["result_r"])
         for row in rows if int(row["global_allowed"] or 0) == 1
     ]
+    global_v2_values = [
+        float(row["result_r"])
+        for row in rows if int(row["global_v2_allowed"] or 0) == 1
+    ]
     return {
         "closed_trades": len(values),
         "open_trades": open_count,
         "baseline_total_r": round(sum(values), 6),
         "global_allowed_trades": len(global_values),
         "global_overlay_total_r": round(sum(global_values), 6),
+        "global_v2_allowed_trades": len(global_v2_values),
+        "global_v2_overlay_total_r": round(sum(global_v2_values), 6),
     }
 
 

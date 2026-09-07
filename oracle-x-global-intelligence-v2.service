@@ -1,0 +1,17 @@
+[Unit]
+Description=ORACLE X Global Intelligence V2 Shadow
+After=network-online.target oracle-x-global-spot-flow.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/oracle-x
+ExecStart=/root/oracle-x/venv/bin/python -u -m evolution.global_intelligence_v2_shadow
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+MemoryMax=384M
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
