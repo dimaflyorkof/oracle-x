@@ -1,0 +1,48 @@
+name: ORACLE X ETF Data Bridge
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/oracle-x-etf-data-bridge.yml"
+      - "operations/github_etf_data_bridge.py"
+  schedule:
+    - cron: "35 4 * * 2-6"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oracle-x-etf-data-bridge
+  cancel-in-progress: false
+
+jobs:
+  refresh-etf-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+
+      - name: Fetch and validate ETF data
+        run: python operations/github_etf_data_bridge.py
+
+      - name: Commit changed public data
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain -- data/institutional/btc_etf_daily.json)" ]; then
+            echo "ETF data unchanged"
+            exit 0
+          fi
+          git config user.name "oracle-x-data-bridge"
+          git config user.email "oracle-x-data-bridge@users.noreply.github.com"
+          git add data/institutional/btc_etf_daily.json
+          git commit -m "Update verified BTC ETF data"
+          git push
