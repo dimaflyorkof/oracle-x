@@ -22,3 +22,5 @@ nohup.out
 /oracle_x_global_data_layer_v1_*/
 /oracle_x_global_data_layer_v1_*.tar.gz
 .env
+/oracle_x_global_intelligence_v2_1/
+/oracle_x_global_intelligence_v2_1.tar.gz
