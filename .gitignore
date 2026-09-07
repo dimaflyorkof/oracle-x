@@ -21,3 +21,4 @@ nohup.out
 /global_intelligence_readiness.json
 /oracle_x_global_data_layer_v1_*/
 /oracle_x_global_data_layer_v1_*.tar.gz
+.env
