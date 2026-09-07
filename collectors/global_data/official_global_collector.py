@@ -5,16 +5,21 @@ import json
 import os
 import time
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, Optional
+from zoneinfo import ZoneInfo
 
 from database.db import connect
 
 
 BLS_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 FED_RSS_URL = "https://www.federalreserve.gov/feeds/press_monetary.xml"
+BLS_CALENDAR_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
+CFTC_COT_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
+CFTC_BTC_CONTRACT = "133741"
 USER_AGENT = "ORACLE-X-Global-Data-Layer/1.0"
 
 BLS_SERIES = {
@@ -118,6 +123,39 @@ def ensure_schema(con) -> None:
             state TEXT NOT NULL,
             notes TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS global_positioning (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL,
+            market_name TEXT NOT NULL,
+            contract_code TEXT NOT NULL,
+            report_date TEXT NOT NULL,
+            report_timestamp_unix INTEGER NOT NULL,
+            available_at TEXT NOT NULL,
+            available_at_unix INTEGER NOT NULL,
+            observed_at TEXT NOT NULL,
+            observed_at_unix INTEGER NOT NULL,
+            open_interest REAL,
+            noncommercial_long REAL,
+            noncommercial_short REAL,
+            noncommercial_spread REAL,
+            commercial_long REAL,
+            commercial_short REAL,
+            nonreportable_long REAL,
+            nonreportable_short REAL,
+            noncommercial_net REAL,
+            commercial_net REAL,
+            revision INTEGER NOT NULL DEFAULT 1,
+            fingerprint TEXT NOT NULL,
+            data_kind TEXT NOT NULL,
+            quality TEXT NOT NULL,
+            raw_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(source, contract_code, report_date, revision)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_global_positioning_available
+        ON global_positioning(available_at_unix, contract_code);
         """
     )
     con.commit()
@@ -327,16 +365,204 @@ def collect_fed(con) -> Dict[str, Any]:
         return {"source": source, "status": "DEGRADED", "error": str(exc)}
 
 
+def unfold_ics(raw: bytes) -> list[str]:
+    text = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+    unfolded: list[str] = []
+    for line in text.split("\n"):
+        if line.startswith((" ", "\t")) and unfolded:
+            unfolded[-1] += line[1:]
+        else:
+            unfolded.append(line)
+    return unfolded
+
+
+def parse_ics_datetime(field: str, value: str) -> datetime:
+    timezone_name = "America/New_York"
+    for token in field.split(";")[1:]:
+        if token.startswith("TZID="):
+            timezone_name = token.split("=", 1)[1]
+    timezone_aliases = {
+        "US-Eastern": "America/New_York",
+        "US/Eastern": "America/New_York",
+        "Eastern Standard Time": "America/New_York",
+    }
+    timezone_name = timezone_aliases.get(timezone_name, timezone_name)
+    value = value.strip()
+    if value.endswith("Z"):
+        pattern = "%Y%m%dT%H%M%SZ" if len(value) == 16 else "%Y%m%dT%H%MZ"
+        return datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
+    if "T" in value:
+        pattern = "%Y%m%dT%H%M%S" if len(value) == 15 else "%Y%m%dT%H%M"
+        parsed = datetime.strptime(value, pattern)
+    else:
+        parsed = datetime.strptime(value, "%Y%m%d")
+    return parsed.replace(tzinfo=ZoneInfo(timezone_name)).astimezone(timezone.utc)
+
+
+def parse_bls_calendar(raw: bytes) -> Iterable[Dict[str, Any]]:
+    current: Optional[Dict[str, str]] = None
+    for line in unfold_ics(raw):
+        if line == "BEGIN:VEVENT":
+            current = {}
+            continue
+        if line == "END:VEVENT" and current is not None:
+            dt_field = next((key for key in current if key.startswith("DTSTART")), None)
+            if dt_field and current.get("SUMMARY"):
+                scheduled = parse_ics_datetime(dt_field, current[dt_field])
+                uid = current.get("UID", current["SUMMARY"])
+                identity = f"{uid}|{scheduled.isoformat()}|{current['SUMMARY']}"
+                yield {
+                    "external_id": hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+                    "title": current["SUMMARY"].replace("\\,", ","),
+                    "scheduled": scheduled,
+                    "raw": current,
+                }
+            current = None
+            continue
+        if current is not None and ":" in line:
+            key, value = line.split(":", 1)
+            current[key] = value
+
+
+def collect_bls_calendar(con) -> Dict[str, Any]:
+    source = "official_release_calendar"
+    observed = utc_now()
+    try:
+        items = list(parse_bls_calendar(request_bytes(BLS_CALENDAR_URL)))
+        changed = 0
+        for item in items:
+            cur = con.execute(
+                """
+                INSERT OR IGNORE INTO global_events (
+                    source, external_id, event_type, title,
+                    event_timestamp, event_timestamp_unix,
+                    available_at, available_at_unix, observed_at, observed_at_unix,
+                    url, data_kind, quality, raw_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source, item["external_id"], "ECONOMIC_RELEASE_SCHEDULE", item["title"],
+                    iso(item["scheduled"]), unix(item["scheduled"]),
+                    iso(observed), unix(observed), iso(observed), unix(observed),
+                    BLS_CALENDAR_URL, "OFFICIAL_SCHEDULE_SNAPSHOT",
+                    "OFFICIAL_CALENDAR_OBSERVED_AT", json.dumps(item["raw"], ensure_ascii=False), iso(observed),
+                ),
+            )
+            changed += max(cur.rowcount, 0)
+        con.commit()
+        update_health(con, source, "ACTIVE", len(items), changed, None)
+        return {"source": source, "status": "ACTIVE", "seen": len(items), "changed": changed}
+    except Exception as exc:
+        update_health(con, source, "DEGRADED", 0, 0, str(exc)[:500])
+        return {"source": source, "status": "DEGRADED", "error": str(exc)}
+
+
+def first_value(row: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row and row[key] not in (None, ""):
+            return row[key]
+    return None
+
+
+def parse_cftc_date(value: str) -> datetime:
+    clean = str(value).split("T", 1)[0]
+    pattern = "%Y-%m-%d" if "-" in clean else "%Y%m%d"
+    return datetime.strptime(clean, pattern).replace(tzinfo=timezone.utc)
+
+
+def cftc_number(row: Dict[str, Any], *keys: str) -> Optional[float]:
+    return numeric_value(first_value(row, *keys))
+
+
+def store_cftc_position(con, row: Dict[str, Any], observed: datetime) -> bool:
+    report_value = first_value(row, "report_date_as_yyyy_mm_dd", "as_of_date_in_form_yyymmdd")
+    if not report_value:
+        return False
+    report_dt = parse_cftc_date(str(report_value))
+    report_date = report_dt.date().isoformat()
+    market_name = str(first_value(row, "market_and_exchange_names", "market_and_exchange_name") or "BITCOIN - CME")
+    contract_code = str(first_value(row, "cftc_contract_market_code") or CFTC_BTC_CONTRACT)
+    values = {
+        "open_interest": cftc_number(row, "open_interest_all"),
+        "noncommercial_long": cftc_number(row, "noncomm_positions_long_all"),
+        "noncommercial_short": cftc_number(row, "noncomm_positions_short_all"),
+        "noncommercial_spread": cftc_number(row, "noncomm_postions_spread_all", "noncomm_positions_spread_all"),
+        "commercial_long": cftc_number(row, "comm_positions_long_all"),
+        "commercial_short": cftc_number(row, "comm_positions_short_all"),
+        "nonreportable_long": cftc_number(row, "nonrept_positions_long_all"),
+        "nonreportable_short": cftc_number(row, "nonrept_positions_short_all"),
+    }
+    fingerprint = hashlib.sha256(json.dumps(values, sort_keys=True).encode("utf-8")).hexdigest()
+    previous = con.execute(
+        """SELECT revision, fingerprint FROM global_positioning
+           WHERE source='cftc_cot' AND contract_code=? AND report_date=?
+           ORDER BY revision DESC LIMIT 1""",
+        (contract_code, report_date),
+    ).fetchone()
+    if previous is not None and previous["fingerprint"] == fingerprint:
+        return False
+    revision = int(previous["revision"]) + 1 if previous is not None else 1
+    noncomm_net = None
+    if values["noncommercial_long"] is not None and values["noncommercial_short"] is not None:
+        noncomm_net = values["noncommercial_long"] - values["noncommercial_short"]
+    comm_net = None
+    if values["commercial_long"] is not None and values["commercial_short"] is not None:
+        comm_net = values["commercial_long"] - values["commercial_short"]
+    con.execute(
+        """
+        INSERT INTO global_positioning (
+            source, market_name, contract_code, report_date, report_timestamp_unix,
+            available_at, available_at_unix, observed_at, observed_at_unix,
+            open_interest, noncommercial_long, noncommercial_short, noncommercial_spread,
+            commercial_long, commercial_short, nonreportable_long, nonreportable_short,
+            noncommercial_net, commercial_net, revision, fingerprint,
+            data_kind, quality, raw_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "cftc_cot", market_name, contract_code, report_date, unix(report_dt),
+            iso(observed), unix(observed), iso(observed), unix(observed),
+            values["open_interest"], values["noncommercial_long"], values["noncommercial_short"],
+            values["noncommercial_spread"], values["commercial_long"], values["commercial_short"],
+            values["nonreportable_long"], values["nonreportable_short"], noncomm_net, comm_net,
+            revision, fingerprint, "OFFICIAL_POSITIONING_OBSERVED_LIVE",
+            "CAUSAL_FROM_FIRST_OBSERVED_AT", json.dumps(row, ensure_ascii=False), iso(observed),
+        ),
+    )
+    return True
+
+
+def collect_cftc(con) -> Dict[str, Any]:
+    source = "cftc_cot"
+    observed = utc_now()
+    query = urllib.parse.urlencode({
+        "$where": f"cftc_contract_market_code='{CFTC_BTC_CONTRACT}'",
+        "$order": "report_date_as_yyyy_mm_dd DESC",
+        "$limit": "260",
+    })
+    try:
+        rows = json.loads(request_bytes(f"{CFTC_COT_URL}?{query}").decode("utf-8"))
+        if not isinstance(rows, list):
+            raise RuntimeError("Unexpected CFTC response")
+        changed = sum(int(store_cftc_position(con, row, observed)) for row in rows)
+        con.commit()
+        update_health(con, source, "ACTIVE", len(rows), changed, None)
+        return {"source": source, "status": "ACTIVE", "seen": len(rows), "changed": changed}
+    except Exception as exc:
+        update_health(con, source, "DEGRADED", 0, 0, str(exc)[:500])
+        return {"source": source, "status": "DEGRADED", "error": str(exc)}
+
+
 def register_sources(con) -> None:
     now = utc_now()
     registry = (
         ("bls_public_data_api", "MACRO", "U.S. Bureau of Labor Statistics", BLS_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "Live observations; historical release-time backfill not yet authorized"),
         ("federal_reserve_monetary_rss", "CENTRAL_BANK", "Board of Governors of the Federal Reserve System", FED_RSS_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "Official publication timestamps"),
         ("alfred_vintages", "MACRO", "Federal Reserve Bank of St. Louis", "https://api.stlouisfed.org/fred/", "OFFICIAL_PRIMARY", 0, "PENDING", "Requires API key and vintage-time contract"),
-        ("cftc_cot", "POSITIONING", "U.S. Commodity Futures Trading Commission", "https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm", "OFFICIAL_PRIMARY", 0, "PENDING", "Requires BTC contract mapping and publication-time validation"),
+        ("cftc_cot", "POSITIONING", "U.S. Commodity Futures Trading Commission", CFTC_COT_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "CME Bitcoin contract 133741; historical rows causal only from first observed_at"),
         ("cme_positioning", "INSTITUTIONAL", "CME Group", None, "OFFICIAL_LICENSED", 0, "PENDING", "Use only through an authorized market-data agreement"),
         ("btc_etf_flows", "INSTITUTIONAL", "SEC and fund issuers", None, "OFFICIAL_FRAGMENTED", 0, "PENDING", "No single official free consolidated daily-flow API"),
-        ("official_release_calendar", "EVENT_CALENDAR", "BLS / Federal Reserve / BEA", None, "OFFICIAL_PRIMARY", 0, "PENDING", "Exact release timestamps must be validated per agency"),
+        ("official_release_calendar", "EVENT_CALENDAR", "U.S. Bureau of Labor Statistics", BLS_CALENDAR_URL, "OFFICIAL_PRIMARY", 1, "CONTEXT_ONLY", "Official BLS calendar snapshots with Eastern-time conversion"),
     )
     for source, category, authority, endpoint, trust, enabled, state, notes in registry:
         con.execute(
@@ -358,7 +584,7 @@ def register_sources(con) -> None:
             """,
             (source, category, authority, endpoint, trust, enabled, state, notes),
         )
-    for source in ("alfred_vintages", "cftc_cot", "cme_positioning", "btc_etf_flows", "official_release_calendar"):
+    for source in ("alfred_vintages", "cme_positioning", "btc_etf_flows"):
         con.execute(
             """
             INSERT OR IGNORE INTO global_source_health (
@@ -376,7 +602,7 @@ def run_once() -> Dict[str, Any]:
     try:
         ensure_schema(con)
         register_sources(con)
-        results = [collect_bls(con), collect_fed(con)]
+        results = [collect_bls(con), collect_fed(con), collect_bls_calendar(con), collect_cftc(con)]
         return {"status": "COMPLETE", "policy": "CONTEXT_ONLY_NO_TRADING_AUTHORITY", "results": results}
     finally:
         con.close()

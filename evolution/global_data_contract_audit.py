@@ -11,10 +11,10 @@ EXPECTED = {
     "bls_public_data_api": "ACTIVE_OR_DEGRADED",
     "federal_reserve_monetary_rss": "ACTIVE_OR_DEGRADED",
     "alfred_vintages": "PENDING",
-    "cftc_cot": "PENDING",
+    "cftc_cot": "ACTIVE_OR_DEGRADED",
     "cme_positioning": "PENDING",
     "btc_etf_flows": "PENDING",
-    "official_release_calendar": "PENDING",
+    "official_release_calendar": "ACTIVE_OR_DEGRADED",
 }
 
 
@@ -33,6 +33,9 @@ def main() -> None:
         ).fetchone()[0]
         event_reversed = con.execute(
             "SELECT COUNT(*) FROM global_events WHERE observed_at_unix < available_at_unix"
+        ).fetchone()[0]
+        positioning_reversed = con.execute(
+            "SELECT COUNT(*) FROM global_positioning WHERE observed_at_unix < available_at_unix"
         ).fetchone()[0]
         source_report = []
         failures = []
@@ -56,6 +59,8 @@ def main() -> None:
             failures.append(f"observation availability reversals: {reversed_observations}")
         if event_reversed:
             failures.append(f"event availability reversals: {event_reversed}")
+        if positioning_reversed:
+            failures.append(f"positioning availability reversals: {positioning_reversed}")
         if null_contract:
             failures.append(f"null observation contract rows: {null_contract}")
         report = {
@@ -66,8 +71,10 @@ def main() -> None:
             "historical_backtest_authority": False,
             "observations": con.execute("SELECT COUNT(*) FROM global_observations").fetchone()[0],
             "events": con.execute("SELECT COUNT(*) FROM global_events").fetchone()[0],
+            "positioning_rows": con.execute("SELECT COUNT(*) FROM global_positioning").fetchone()[0],
             "reversed_observations": reversed_observations,
             "reversed_events": event_reversed,
+            "reversed_positioning": positioning_reversed,
             "null_contract_rows": null_contract,
             "sources_with_trading_or_backtest_authority": unauthorized,
             "sources": source_report,
