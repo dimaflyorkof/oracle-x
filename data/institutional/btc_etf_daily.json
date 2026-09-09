@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-09-07T20:36:55+00:00",
+  "generated_at": "2026-09-09T04:43:25+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,7 +8,7 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "b6cd323cd5ecc82e48bda35410ad4eaf193d0449024fda64faee10f3b56906d7",
+  "source_data_sha256": "fa94165a606c1a15a2d75504ee907b263a9291fa68fe77cf218e080547183776",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-09-04",
+      "latest_date": "2026-09-08",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -12966,6 +12966,25 @@
             "Total": 174.6
           },
           "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-09-08",
+          "flows_usd_millions": {
+            "ARKB": null,
+            "BITB": null,
+            "BRRR": null,
+            "BTC": null,
+            "BTCO": null,
+            "BTCW": null,
+            "EZBC": null,
+            "FBTC": null,
+            "GBTC": null,
+            "HODL": null,
+            "IBIT": null,
+            "MSBT": null,
+            "Total": 0.0
+          },
+          "quality": "RECENT_MAY_REVISE"
         }
       ],
       "source_url": "https://farside.co.uk/bitcoin-etf-flow-all-data/",
