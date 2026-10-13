@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-10-10T10:45:29+00:00",
+  "generated_at": "2026-10-13T12:04:06+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,15 +8,15 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "54c4f136b05cf5cbd3b039c2b1892aadc48c4eab000673a5d58bdf72e71dce5e",
+  "source_data_sha256": "4919b72265319d3e545d10af1e71bb89ac488a5509a03270e389edff79cd1230",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
-      "holdings_btc": 804753.6334,
-      "market_value_usd": 65186275578.49,
+      "holdings_btc": 805025.3396,
+      "market_value_usd": 66694803734.17,
       "metric": "OFFICIAL_DAILY_HOLDINGS_NOT_NET_FLOW",
-      "reference_date": "2026-10-08",
-      "shares_outstanding": 1421720000.0,
+      "reference_date": "2026-10-09",
+      "shares_outstanding": 1421600000.0,
       "source_url": "https://www.ishares.com/us/products/333011/ishares-bitcoin-trust-etf/latest-holdings.csv",
       "status": "ACTIVE",
       "trust_tier": "ISSUER_PRIMARY"
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-10-09",
+      "latest_date": "2026-10-13",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -13420,6 +13420,44 @@
             "IBIT": 22.4,
             "MSBT": 0.0,
             "Total": 21.1
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-10-12",
+          "flows_usd_millions": {
+            "ARKB": 0.0,
+            "BITB": 0.0,
+            "BRRR": 0.0,
+            "BTC": 0.0,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 0.0,
+            "FBTC": 0.0,
+            "GBTC": 0.0,
+            "HODL": 0.0,
+            "IBIT": -65.4,
+            "MSBT": 0.0,
+            "Total": -65.4
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-10-13",
+          "flows_usd_millions": {
+            "ARKB": null,
+            "BITB": null,
+            "BRRR": null,
+            "BTC": null,
+            "BTCO": null,
+            "BTCW": null,
+            "EZBC": null,
+            "FBTC": null,
+            "GBTC": null,
+            "HODL": null,
+            "IBIT": null,
+            "MSBT": null,
+            "Total": 0.0
           },
           "quality": "RECENT_MAY_REVISE"
         }
