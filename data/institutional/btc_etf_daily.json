@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-10-14T09:40:22+00:00",
+  "generated_at": "2026-10-15T09:19:10+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,15 +8,15 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "fe1a7623a2c6d036e1f3eaee5c47b8f00c178a8a31af99b05493a4bc57e5dece",
+  "source_data_sha256": "b3f55c1535b1f0d10480814d8aaeaec2c69adfe84e9a819fa42b7a8fb16f40c7",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
-      "holdings_btc": 804232.8732,
-      "market_value_usd": 66470530570.1,
+      "holdings_btc": 805025.3284,
+      "market_value_usd": 67101477458.72,
       "metric": "OFFICIAL_DAILY_HOLDINGS_NOT_NET_FLOW",
-      "reference_date": "2026-10-12",
-      "shares_outstanding": 1422080000.0,
+      "reference_date": "2026-10-13",
+      "shares_outstanding": 1420680000.0,
       "source_url": "https://www.ishares.com/us/products/333011/ishares-bitcoin-trust-etf/latest-holdings.csv",
       "status": "ACTIVE",
       "trust_tier": "ISSUER_PRIMARY"
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-10-13",
+      "latest_date": "2026-10-14",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -13458,6 +13458,25 @@
             "IBIT": 65.9,
             "MSBT": 6.7,
             "Total": 175.7
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-10-14",
+          "flows_usd_millions": {
+            "ARKB": 0.0,
+            "BITB": 2.2,
+            "BRRR": 0.0,
+            "BTC": 0.0,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 0.0,
+            "FBTC": -152.7,
+            "GBTC": 0.0,
+            "HODL": 0.0,
+            "IBIT": -110.9,
+            "MSBT": 0.0,
+            "Total": -261.4
           },
           "quality": "RECENT_MAY_REVISE"
         }
