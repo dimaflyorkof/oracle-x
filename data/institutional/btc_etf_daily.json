@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-11-03T12:13:45+00:00",
+  "generated_at": "2026-11-04T12:25:19+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,7 +8,7 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "81087de75b241b31e1eee9b44a1bf1c77219bb721c5001e63e8f007731666a16",
+  "source_data_sha256": "e37f5c8d9f03c1a3e69d87b86076f1e28ffb12e638fac48aa8d9217a875c464d",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-11-03",
+      "latest_date": "2026-11-04",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -13729,6 +13729,25 @@
         },
         {
           "date": "2026-11-03",
+          "flows_usd_millions": {
+            "ARKB": 0.0,
+            "BITB": 21.9,
+            "BRRR": 0.0,
+            "BTC": -52.6,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 0.0,
+            "FBTC": 6.8,
+            "GBTC": 0.0,
+            "HODL": 0.0,
+            "IBIT": -95.0,
+            "MSBT": 3.3,
+            "Total": -115.6
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-11-04",
           "flows_usd_millions": {
             "ARKB": null,
             "BITB": null,
