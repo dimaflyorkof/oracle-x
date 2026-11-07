@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-11-06T12:22:54+00:00",
+  "generated_at": "2026-11-07T11:16:02+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,7 +8,7 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "8722a9278ee64636e1da8b481d5fe2091aa2d02313ad7048a0ad08aac8afa353",
+  "source_data_sha256": "028723e4ae363f12847200b4a367f90bbe66f8743cd2cca85382078b061a2c11",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
@@ -13787,19 +13787,19 @@
         {
           "date": "2026-11-06",
           "flows_usd_millions": {
-            "ARKB": null,
-            "BITB": null,
-            "BRRR": null,
-            "BTC": null,
-            "BTCO": null,
-            "BTCW": null,
-            "EZBC": null,
-            "FBTC": null,
-            "GBTC": null,
-            "HODL": null,
-            "IBIT": null,
-            "MSBT": null,
-            "Total": 0.0
+            "ARKB": -20.1,
+            "BITB": -20.5,
+            "BRRR": 0.0,
+            "BTC": 0.0,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 0.0,
+            "FBTC": 42.8,
+            "GBTC": -11.1,
+            "HODL": 0.0,
+            "IBIT": -403.0,
+            "MSBT": 0.0,
+            "Total": -411.9
           },
           "quality": "RECENT_MAY_REVISE"
         }
