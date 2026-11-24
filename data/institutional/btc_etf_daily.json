@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-11-21T12:55:31+00:00",
+  "generated_at": "2026-11-24T15:10:14+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,15 +8,15 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "f57c92a6a7dd36d7571b84e0251145a9304332069e7a7af397aba44ff59ee132",
+  "source_data_sha256": "221a3b1cc6bbb5f62f02810e70ee1586e80d8380e840a2e1492b04e456aa9ba1",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
-      "holdings_btc": 770251.8482,
-      "market_value_usd": 48317097917.65,
+      "holdings_btc": 752596.7169,
+      "market_value_usd": 46816392619.11,
       "metric": "OFFICIAL_DAILY_HOLDINGS_NOT_NET_FLOW",
-      "reference_date": "2026-11-19",
-      "shares_outstanding": 1376360000.0,
+      "reference_date": "2026-11-23",
+      "shares_outstanding": 1344480000.0,
       "source_url": "https://www.ishares.com/us/products/333011/ishares-bitcoin-trust-etf/latest-holdings.csv",
       "status": "ACTIVE",
       "trust_tier": "ISSUER_PRIMARY"
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-11-20",
+      "latest_date": "2026-11-24",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -13987,9 +13987,47 @@
             "FBTC": -72.4,
             "GBTC": -32.8,
             "HODL": 0.0,
-            "IBIT": null,
+            "IBIT": -544.7,
             "MSBT": 2.3,
-            "Total": -124.5
+            "Total": -669.2
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-11-23",
+          "flows_usd_millions": {
+            "ARKB": 0.0,
+            "BITB": -12.6,
+            "BRRR": 0.0,
+            "BTC": -61.1,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 0.0,
+            "FBTC": 13.3,
+            "GBTC": 0.0,
+            "HODL": 0.0,
+            "IBIT": -509.3,
+            "MSBT": 0.0,
+            "Total": -569.7
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-11-24",
+          "flows_usd_millions": {
+            "ARKB": null,
+            "BITB": null,
+            "BRRR": null,
+            "BTC": null,
+            "BTCO": null,
+            "BTCW": null,
+            "EZBC": null,
+            "FBTC": null,
+            "GBTC": null,
+            "HODL": null,
+            "IBIT": null,
+            "MSBT": null,
+            "Total": 0.0
           },
           "quality": "RECENT_MAY_REVISE"
         }
