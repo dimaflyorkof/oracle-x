@@ -1,6 +1,6 @@
 {
   "deployment": "DATA_BRIDGE_ONLY",
-  "generated_at": "2026-11-24T15:10:14+00:00",
+  "generated_at": "2026-11-25T14:50:03+00:00",
   "historical_backtest_authority": false,
   "refresh_errors": {
     "blackrock_ibit": [
@@ -8,15 +8,15 @@
     ],
     "farside_btc_etf_flows": []
   },
-  "source_data_sha256": "221a3b1cc6bbb5f62f02810e70ee1586e80d8380e840a2e1492b04e456aa9ba1",
+  "source_data_sha256": "30f7b4fb3bc71917e37a4cfa547a85d53584cff4201fbdd431cd89a593b7ac28",
   "sources": {
     "blackrock_ibit": {
       "authority": "BlackRock iShares",
-      "holdings_btc": 752596.7169,
-      "market_value_usd": 46816392619.11,
+      "holdings_btc": 749654.2742,
+      "market_value_usd": 44497078820.04,
       "metric": "OFFICIAL_DAILY_HOLDINGS_NOT_NET_FLOW",
-      "reference_date": "2026-11-23",
-      "shares_outstanding": 1344480000.0,
+      "reference_date": "2026-11-24",
+      "shares_outstanding": 1329760000.0,
       "source_url": "https://www.ishares.com/us/products/333011/ishares-bitcoin-trust-etf/latest-holdings.csv",
       "status": "ACTIVE",
       "trust_tier": "ISSUER_PRIMARY"
@@ -24,7 +24,7 @@
     "farside_btc_etf_flows": {
       "authority": "Farside Investors",
       "first_date": "2024-01-11",
-      "latest_date": "2026-11-24",
+      "latest_date": "2026-11-25",
       "metric": "REPORTED_DAILY_US_SPOT_BTC_ETF_NET_FLOWS_USD_MILLIONS",
       "missing_values": "NULL_NOT_ZERO",
       "records": [
@@ -14014,6 +14014,25 @@
         },
         {
           "date": "2026-11-24",
+          "flows_usd_millions": {
+            "ARKB": -15.8,
+            "BITB": -10.3,
+            "BRRR": 0.0,
+            "BTC": 4.0,
+            "BTCO": 0.0,
+            "BTCW": 0.0,
+            "EZBC": 6.9,
+            "FBTC": -44.0,
+            "GBTC": 0.0,
+            "HODL": 0.0,
+            "IBIT": -175.3,
+            "MSBT": 3.1,
+            "Total": -231.4
+          },
+          "quality": "COMPLETE"
+        },
+        {
+          "date": "2026-11-25",
           "flows_usd_millions": {
             "ARKB": null,
             "BITB": null,
